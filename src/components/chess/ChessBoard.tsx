@@ -1,16 +1,16 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove, formatTotalTime } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Copy, Check, AlertCircle } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Copy, Check, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useDoc, useUser, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
@@ -20,7 +20,6 @@ interface ChessBoardProps {
 
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
   const { firestore } = useFirestore();
-  const { user } = useUser();
   const { toast } = useToast();
   
   const [board, setBoard] = useState<PieceType[][]>(INITIAL_BOARD);
@@ -38,7 +37,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Update local state when remote state changes
   useEffect(() => {
     if (remoteGame?.board) {
       setBoard(remoteGame.board);
@@ -52,7 +50,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame]);
 
-  // Total Game Timer
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsedSeconds(prev => prev + 1);
@@ -63,38 +60,23 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const triggerAiMove = useCallback(async (currentBoard: PieceType[][]) => {
     setIsThinking(true);
     try {
-      // AI plays Black ('b')
       const fen = boardToFen(currentBoard, 'b');
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       
       const moveStr = aiResponse.move.trim().toLowerCase();
-      // Robustly find a 4 or 5 character UCI move (e.g. e2e4 or e7e8q)
       const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
       
-      if (!uciMatch) {
-        throw new Error(`AI returned an invalid move format: "${moveStr}"`);
-      }
+      if (!uciMatch) throw new Error("Move format error");
 
       const uci = uciMatch[0];
       const { from, to } = uciToMove(uci);
       const [fromR, fromF] = from;
       const [toR, toF] = to;
 
-      const pieceToMove = currentBoard[fromR][fromF];
-      if (!pieceToMove) {
-        throw new Error(`AI tried to move from an empty square: ${uci}`);
-      }
-
-      // Check if it's actually a black piece (lowercase)
-      if (pieceToMove !== pieceToMove.toLowerCase()) {
-        throw new Error(`AI tried to move a white piece: ${uci}`);
-      }
-
       const nextBoard = currentBoard.map(row => [...row]);
       nextBoard[toR][toF] = nextBoard[fromR][fromF];
       nextBoard[fromR][fromF] = null;
       
-      // Update state
       setBoard(nextBoard);
       setTurn('w');
       
@@ -108,15 +90,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }
     } catch (error: any) {
       console.error("AI Move failed:", error);
-      toast({
-        title: "AI Match Error",
-        description: error.message || "The AI failed to calculate a valid move.",
-        variant: "destructive"
-      });
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, gameId, gameRef, remoteGame, toast]);
+  }, [difficulty, gameId, gameRef, remoteGame]);
 
   const executeMove = async (from: [number, number], to: [number, number]) => {
     const [sr, sf] = from;
@@ -131,24 +108,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     if (mode === 'learning') {
       setIsThinking(true);
-      try {
-        const feedback = await getMoveFeedback({
-          currentBoardState: boardToFen(board, turn),
-          userMove: uci
-        });
-        setIsThinking(false);
-
-        if (!feedback.isLegalMove) {
-          toast({
-            title: "Illegal Move",
-            description: feedback.feedback,
-            variant: "destructive"
-          });
-          setSelected(null);
-          return;
-        }
-      } catch (e) {
-        setIsThinking(false);
+      const feedback = await getMoveFeedback({
+        currentBoardState: boardToFen(board, turn),
+        userMove: uci
+      });
+      setIsThinking(false);
+      if (!feedback.isLegalMove) {
+        toast({ title: "Movimento Inválido", description: feedback.feedback, variant: "destructive" });
+        setSelected(null);
+        return;
       }
     }
 
@@ -158,12 +126,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     
     const nextTurn = turn === 'w' ? 'b' : 'w';
 
-    // Update local state
     setBoard(nextBoard);
     setSelected(null);
     setTurn(nextTurn);
 
-    // Persist to Firestore if in pvp mode or sync is active
     if (gameId && gameRef) {
       updateDoc(gameRef, {
         board: nextBoard,
@@ -173,9 +139,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }).catch(() => {});
     }
 
-    // Trigger AI move if it's AI mode and it's Black's turn
     if (mode === 'ai' && nextTurn === 'b') {
-      // Small delay for natural feel
       setTimeout(() => triggerAiMove(nextBoard), 500);
     }
   };
@@ -193,37 +157,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
-  const handleDragStart = (e: React.DragEvent, r: number, f: number) => {
-    if (isThinking) {
-      e.preventDefault();
-      return;
-    }
-    const piece = board[r][f];
-    if (piece && ((turn === 'w' && piece === piece.toUpperCase()) || (turn === 'b' && piece === piece.toLowerCase()))) {
-      setSelected([r, f]);
-      e.dataTransfer.setData('text/plain', `${r},${f}`);
-      e.dataTransfer.effectAllowed = 'move';
-    } else {
-      e.preventDefault();
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e: React.DragEvent, r: number, f: number) => {
-    e.preventDefault();
-    if (isThinking || !selected) return;
-    executeMove(selected, [r, f]);
-  };
-
   const copyInviteLink = () => {
     const url = window.location.href;
     navigator.clipboard.writeText(url);
     setHasCopied(true);
-    toast({ title: "Link Copied!", description: "Send this link to your daughter to join the game." });
+    toast({ title: "Link Copiado!", description: "Envie este link para sua filha entrar no jogo." });
     setTimeout(() => setHasCopied(false), 2000);
   };
 
@@ -235,7 +173,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Timer className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total Duration</p>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Duração Total</p>
             <p className="text-xl font-mono font-bold">{formatTotalTime(elapsedSeconds)}</p>
           </div>
         </div>
@@ -248,36 +186,45 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             onClick={copyInviteLink}
           >
             {hasCopied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
-            {hasCopied ? "Copied" : "Share Room"}
+            {hasCopied ? "Copiado" : "Convidar Oponente"}
           </Button>
         )}
       </div>
+
+      {mode === 'pvp' && gameId && !hasCopied && (
+        <div className="w-full bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+          <Info className="w-4 h-4 text-blue-500 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-xs text-blue-700 font-medium">Você está jogando Online!</p>
+            <p className="text-[10px] text-blue-600">Para jogar com alguém, mande o link da página para ela.</p>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 mb-2">
         <div className={cn(
           "px-4 py-1 rounded-full text-xs font-bold transition-all border",
           turn === 'w' ? "bg-white text-black border-primary shadow-md scale-110" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
         )}>
-          WHITE'S TURN
+          VEZ DAS BRANCAS
         </div>
         <div className={cn(
           "px-4 py-1 rounded-full text-xs font-bold transition-all border",
           turn === 'b' ? "bg-black text-white border-primary shadow-md scale-110" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
         )}>
-          BLACK'S TURN
+          VEZ DAS PRETAS
         </div>
       </div>
 
-      <div className="h-6 flex items-center">
+      <div className="chess-board border-4 border-primary/20 rounded-2xl overflow-hidden shadow-2xl bg-white/50 backdrop-blur-sm relative">
         {isThinking && (
-          <div className="flex items-center gap-2 text-primary animate-pulse">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-xs font-bold uppercase">AI Thinking...</span>
+          <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-50 flex items-center justify-center">
+             <div className="bg-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span className="text-xs font-bold uppercase text-primary">IA Pensando...</span>
+             </div>
           </div>
         )}
-      </div>
-
-      <div className="chess-board border-4 border-primary/20 rounded-2xl overflow-hidden shadow-2xl bg-white/50 backdrop-blur-sm">
         {board.map((row, r) => 
           row.map((piece, f) => {
             const isLight = (r + f) % 2 === 0;
@@ -287,8 +234,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               <div
                 key={`${r}-${f}`}
                 onClick={() => handleSquareClick(r, f)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, r, f)}
                 className={cn(
                   "chess-square",
                   isLight ? "light" : "dark",
@@ -297,10 +242,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               >
                 {piece && (
                   <div
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, r, f)}
                     className={cn(
-                      "chess-piece text-4xl sm:text-6xl flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform",
+                      "chess-piece text-4xl sm:text-6xl flex items-center justify-center transition-transform",
                       isSelected && "scale-110",
                       piece === piece.toUpperCase() 
                         ? "text-slate-100 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" 
@@ -322,26 +265,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           size="sm" 
           className="text-xs text-muted-foreground gap-2 h-8 hover:bg-primary/5"
           onClick={() => {
-            const resetData = {
-              board: INITIAL_BOARD,
-              turn: 'w',
-              moves: [],
-              startTime: serverTimestamp()
-            };
-            if (gameId && gameRef) {
-              updateDoc(gameRef, resetData);
-            } else {
-              setBoard(INITIAL_BOARD);
-              setTurn('w');
-              setElapsedSeconds(0);
-            }
+            const resetData = { board: INITIAL_BOARD, turn: 'w', moves: [], startTime: serverTimestamp() };
+            if (gameId && gameRef) updateDoc(gameRef, resetData);
+            else { setBoard(INITIAL_BOARD); setTurn('w'); setElapsedSeconds(0); }
             setSelected(null);
           }}
         >
           <RotateCcw className="w-3 h-3" />
-          Reset Board
+          Reiniciar Partida
         </Button>
       </div>
     </div>
   );
 }
+
