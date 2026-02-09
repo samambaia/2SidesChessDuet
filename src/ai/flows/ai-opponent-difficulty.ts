@@ -1,14 +1,10 @@
+
 'use server';
 
 /**
  * @fileOverview This file defines a Genkit flow for playing chess against an AI opponent with adjustable difficulty levels.
  *
  * The flow takes the current game state and desired difficulty as input and returns the AI's move.
- *
- * @interface AiOpponentDifficultyInput - Represents the input to the aiOpponentDifficulty function, including the FEN notation of the board state and the desired difficulty level.
- * @interface AiOpponentDifficultyOutput - Represents the output of the aiOpponentDifficulty function, which includes the AI's move in UCI notation.
- *
- * @function aiOpponentDifficulty - The main function that initiates the AI opponent flow.
  */
 
 import {ai} from '@/ai/genkit';
@@ -23,7 +19,7 @@ const AiOpponentDifficultyInputSchema = z.object({
 export type AiOpponentDifficultyInput = z.infer<typeof AiOpponentDifficultyInputSchema>;
 
 const AiOpponentDifficultyOutputSchema = z.object({
-  move: z.string().describe('The AI opponent move in Universal Chess Interface (UCI) notation.'),
+  move: z.string().describe('The AI opponent move in Universal Chess Interface (UCI) notation (e.g., e2e4).'),
 });
 export type AiOpponentDifficultyOutput = z.infer<typeof AiOpponentDifficultyOutputSchema>;
 
@@ -35,17 +31,17 @@ const prompt = ai.definePrompt({
   name: 'aiOpponentDifficultyPrompt',
   input: {schema: AiOpponentDifficultyInputSchema},
   output: {schema: AiOpponentDifficultyOutputSchema},
-  prompt: `You are a chess engine that analyzes the current board state and provides the best move for the given difficulty level.
+  prompt: `You are an expert chess engine. Analyze the current board state and provide the best move in UCI notation (e.g., "e2e4" or "e7e8q").
 
   The difficulty levels are:
-  - easy: Make simple and obvious moves.
-  - medium: Make more strategic moves, but still avoid complex tactics.
-  - hard: Play at a grandmaster level, considering all possible variations.
+  - easy: Make simple and obvious moves, sometimes blundering.
+  - medium: Make strategic moves, but avoid extremely deep calculations.
+  - hard: Play at a grandmaster level, maximizing tactical advantages.
 
-  Current board state in FEN notation: {{{fen}}}
-  Difficulty level: {{{difficulty}}}
+  Current FEN: {{{fen}}}
+  Difficulty: {{{difficulty}}}
 
-  Respond with the best chess move in UCI notation. Do not include any explanation. The response should ONLY contain the move.`,
+  Respond ONLY with the UCI move. No explanation, no extra text. Example: "d2d4"`,
 });
 
 const aiOpponentDifficultyFlow = ai.defineFlow(

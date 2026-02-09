@@ -3,11 +3,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, formatTotalTime } from '@/lib/chess-utils';
+import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove, formatTotalTime } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Copy, Check } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Copy, Check, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useUser, useMemoFirebase } from '@/firebase';
 import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -112,9 +112,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         turn: nextTurn,
         lastMove: uci,
         moves: [...(remoteGame?.moves || []), uci]
-      }).catch(err => {
-        // Silently fail or handle error via global listener
-      });
+      }).catch(() => {});
     }
 
     if (mode === 'ai' && nextTurn === 'b') {
@@ -128,12 +126,22 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const fen = boardToFen(currentBoard, 'b');
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       
-      const uci = aiResponse.move;
-      const files = 'abcdefgh';
-      const fromF = files.indexOf(uci[0]);
-      const fromR = 8 - parseInt(uci[1]);
-      const toF = files.indexOf(uci[2]);
-      const toR = 8 - parseInt(uci[3]);
+      const moveStr = aiResponse.move.trim().toLowerCase();
+      // Robustly find a 4 or 5 character UCI move (e.g. e2e4 or e7e8q)
+      const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
+      
+      if (!uciMatch) {
+        throw new Error(`Invalid move format: ${moveStr}`);
+      }
+
+      const uci = uciMatch[0];
+      const { from, to } = uciToMove(uci);
+      const [fromR, fromF] = from;
+      const [toR, toF] = to;
+
+      if (!currentBoard[fromR][fromF]) {
+        throw new Error(`AI tried to move from an empty square: ${uci}`);
+      }
 
       const newBoard = currentBoard.map(row => [...row]);
       newBoard[toR][toF] = newBoard[fromR][fromF];
@@ -152,7 +160,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         });
       }
     } catch (error) {
+      console.error("AI Move failed:", error);
       setIsThinking(false);
+      toast({
+        title: "AI Error",
+        description: "The AI failed to calculate a move. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -163,7 +177,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       executeMove(selected, [r, f]);
     } else {
       const piece = board[r][f];
-      // White pieces are uppercase, Black pieces are lowercase
       if (piece && ((turn === 'w' && piece === piece.toUpperCase()) || (turn === 'b' && piece === piece.toLowerCase()))) {
         setSelected([r, f]);
       }
@@ -245,12 +258,14 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         </div>
       </div>
 
-      {isThinking && (
-        <div className="flex items-center gap-2 text-primary animate-pulse mb-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-xs font-bold uppercase">AI Thinking...</span>
-        </div>
-      )}
+      <div className="h-6 flex items-center">
+        {isThinking && (
+          <div className="flex items-center gap-2 text-primary animate-pulse">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-xs font-bold uppercase">AI Thinking...</span>
+          </div>
+        )}
+      </div>
 
       <div className="chess-board border-4 border-primary/20 rounded-2xl overflow-hidden shadow-2xl bg-white/50 backdrop-blur-sm">
         {board.map((row, r) => 
@@ -277,8 +292,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                     className={cn(
                       "chess-piece text-4xl sm:text-6xl flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform",
                       isSelected && "scale-110",
-                      // Correcting piece colors: White (uppercase) is light, Black (lowercase) is dark
-                      piece === piece.toUpperCase() ? "text-white drop-shadow-lg" : "text-slate-900"
+                      piece === piece.toUpperCase() 
+                        ? "text-slate-100 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" 
+                        : "text-slate-950"
                     )}
                   >
                     {PIECE_ICONS[piece]}
@@ -309,6 +325,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               setTurn('w');
               setElapsedSeconds(0);
             }
+            setSelected(null);
           }}
         >
           <RotateCcw className="w-3 h-3" />
