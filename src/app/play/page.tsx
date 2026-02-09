@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChessBoard } from '@/components/chess/ChessBoard';
 import { Button } from '@/components/ui/button';
-import { Settings, Brain, Users, BookOpen, Zap, ChevronLeft, Plus } from 'lucide-react';
+import { Settings, Brain, Users, BookOpen, Zap, ChevronLeft, Plus, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, useFirestore } from '@/firebase';
@@ -18,43 +18,69 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { INITIAL_BOARD } from '@/lib/chess-utils';
+import { useToast } from '@/hooks/use-toast';
 
 export default function PlayPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { auth } = useAuth();
   const { firestore } = useFirestore();
+  const { toast } = useToast();
   
   const roomFromUrl = searchParams.get('room');
   const [activeMode, setActiveMode] = useState<'ai' | 'pvp' | 'learning'>(roomFromUrl ? 'pvp' : 'ai');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [isCreating, setIsCreating] = useState(false);
 
   // Auto-login anonymously to enable Firestore writes
   useEffect(() => {
     if (auth && !auth.currentUser) {
-      signInAnonymously(auth);
+      signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
     }
   }, [auth]);
 
   const createRoom = async () => {
-    if (!firestore || !auth?.currentUser) return;
+    if (!firestore || !auth) {
+      toast({ title: "Erro de Conexão", description: "O serviço de banco de dados ainda não está pronto.", variant: "destructive" });
+      return;
+    }
     
-    const newRoomId = Math.random().toString(36).substring(2, 9);
-    const gameRef = doc(firestore, 'games', newRoomId);
-    
-    await setDoc(gameRef, {
-      id: newRoomId,
-      board: INITIAL_BOARD,
-      turn: 'w',
-      moves: [],
-      startTime: serverTimestamp(),
-      player1Id: auth.currentUser.uid,
-      player2Id: null,
-      mode: 'pvp'
-    });
+    setIsCreating(true);
+    try {
+      // Garantir que o usuário está logado antes de tentar escrever no Firestore
+      let currentUser = auth.currentUser;
+      if (!currentUser) {
+        const cred = await signInAnonymously(auth);
+        currentUser = cred.user;
+      }
 
-    router.push(`/play?room=${newRoomId}`);
-    setActiveMode('pvp');
+      const newRoomId = Math.random().toString(36).substring(2, 9);
+      const gameRef = doc(firestore, 'games', newRoomId);
+      
+      await setDoc(gameRef, {
+        id: newRoomId,
+        board: INITIAL_BOARD,
+        turn: 'w',
+        moves: [],
+        startTime: serverTimestamp(),
+        player1Id: currentUser.uid,
+        player2Id: null,
+        mode: 'pvp'
+      });
+
+      router.push(`/play?room=${newRoomId}`);
+      setActiveMode('pvp');
+      toast({ title: "Sala Criada!", description: "Agora você pode compartilhar o link com seu oponente." });
+    } catch (error: any) {
+      console.error("Erro ao criar sala:", error);
+      toast({ 
+        title: "Falha ao Criar Jogo", 
+        description: "Ocorreu um problema técnico ao gerar a sala. Por favor, tente novamente.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -68,9 +94,14 @@ export default function PlayPage() {
 
         <div className="ml-auto flex items-center gap-3">
           {activeMode === 'pvp' && !roomFromUrl && (
-            <Button onClick={createRoom} size="sm" className="rounded-full gap-2">
-              <Plus className="w-4 h-4" />
-              New Online Game
+            <Button 
+              onClick={createRoom} 
+              disabled={isCreating}
+              size="sm" 
+              className="rounded-full gap-2"
+            >
+              {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Novo Jogo Online
             </Button>
           )}
           
@@ -78,16 +109,16 @@ export default function PlayPage() {
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2 rounded-full">
                 <Settings className="w-4 h-4" />
-                Game Settings
+                Configurações
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl">
               <DialogHeader>
-                <DialogTitle className="text-xl font-bold">Match Configuration</DialogTitle>
+                <DialogTitle className="text-xl font-bold">Configuração da Partida</DialogTitle>
               </DialogHeader>
               <div className="grid gap-6 py-4">
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Game Mode</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Modo de Jogo</h4>
                   <div className="grid grid-cols-1 gap-2">
                     <Button 
                       variant={activeMode === 'ai' ? 'default' : 'outline'} 
@@ -99,22 +130,26 @@ export default function PlayPage() {
                     >
                       <Brain className="w-5 h-5" />
                       <div className="text-left">
-                        <div className="font-semibold">AI Match</div>
-                        <div className="text-[10px] opacity-70">Challenge Gemini AI</div>
+                        <div className="font-semibold">Contra IA</div>
+                        <div className="text-[10px] opacity-70">Desafie o Gemini</div>
                       </div>
                     </Button>
                     <Button 
                       variant={activeMode === 'pvp' ? 'default' : 'outline'} 
                       className="justify-start gap-3 h-14 rounded-2xl"
+                      disabled={isCreating}
                       onClick={() => {
-                        setActiveMode('pvp');
-                        if (!roomFromUrl) createRoom();
+                        if (!roomFromUrl) {
+                          createRoom();
+                        } else {
+                          setActiveMode('pvp');
+                        }
                       }}
                     >
-                      <Users className="w-5 h-5" />
+                      {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Users className="w-5 h-5" />}
                       <div className="text-left">
                         <div className="font-semibold">Online PvP</div>
-                        <div className="text-[10px] opacity-70">Play with your daughter</div>
+                        <div className="text-[10px] opacity-70">Jogue com sua filha</div>
                       </div>
                     </Button>
                     <Button 
@@ -127,8 +162,8 @@ export default function PlayPage() {
                     >
                       <BookOpen className="w-5 h-5" />
                       <div className="text-left">
-                        <div className="font-semibold">Learning Mode</div>
-                        <div className="text-[10px] opacity-70">Get real-time move feedback</div>
+                        <div className="font-semibold">Modo Aprendizado</div>
+                        <div className="text-[10px] opacity-70">Feedback em tempo real</div>
                       </div>
                     </Button>
                   </div>
@@ -136,7 +171,7 @@ export default function PlayPage() {
 
                 {activeMode === 'ai' && (
                   <div className="space-y-3 pt-4 border-t">
-                    <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">AI Difficulty</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Dificuldade da IA</h4>
                     <div className="grid grid-cols-3 gap-2">
                       {(['easy', 'medium', 'hard'] as const).map((d) => (
                         <Button
@@ -145,7 +180,7 @@ export default function PlayPage() {
                           onClick={() => setDifficulty(d)}
                           className="capitalize h-11 rounded-xl"
                         >
-                          {d}
+                          {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Médio' : 'Difícil'}
                         </Button>
                       ))}
                     </div>
@@ -167,13 +202,16 @@ export default function PlayPage() {
         </div>
         <div className="mt-8 text-center space-y-1">
           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">
-            Current Match
+            Partida Atual
           </p>
           <p className="text-sm font-medium">
-            {roomFromUrl ? `Shared Room: ${roomFromUrl}` : activeMode === 'ai' ? `vs AI (${difficulty})` : 'Starting Match...'}
+            {roomFromUrl ? `Sala Online: ${roomFromUrl}` : activeMode === 'ai' ? `vs IA (${difficulty})` : 'Aguardando Início...'}
           </p>
-          {activeMode === 'pvp' && !roomFromUrl && (
-            <p className="text-xs text-primary animate-pulse font-medium">Click "New Online Game" to start sharing</p>
+          {activeMode === 'pvp' && !roomFromUrl && !isCreating && (
+            <p className="text-xs text-primary animate-pulse font-medium">Clique em "Novo Jogo Online" para começar</p>
+          )}
+          {isCreating && (
+            <p className="text-xs text-muted-foreground animate-pulse font-medium">Gerando sua sala exclusiva...</p>
           )}
         </div>
       </main>
