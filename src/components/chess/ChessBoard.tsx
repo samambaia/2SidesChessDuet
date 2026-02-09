@@ -105,7 +105,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setSelected(null);
     setTurn(nextTurn);
 
-    // Persist to Firestore if in pvp mode
+    // Persist to Firestore if in pvp mode or sync is active
     if (gameId && gameRef) {
       updateDoc(gameRef, {
         board: newBoard,
@@ -113,7 +113,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         lastMove: uci,
         moves: [...(remoteGame?.moves || []), uci]
       }).catch(err => {
-        console.error("Failed to sync move", err);
+        // Silently fail or handle error via global listener
       });
     }
 
@@ -142,6 +142,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setBoard(newBoard);
       setTurn('w');
       setIsThinking(false);
+      
+      if (gameId && gameRef) {
+        updateDoc(gameRef, {
+          board: newBoard,
+          turn: 'w',
+          lastMove: uci,
+          moves: [...(remoteGame?.moves || []), uci]
+        });
+      }
     } catch (error) {
       setIsThinking(false);
     }
@@ -154,6 +163,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       executeMove(selected, [r, f]);
     } else {
       const piece = board[r][f];
+      // White pieces are uppercase, Black pieces are lowercase
       if (piece && ((turn === 'w' && piece === piece.toUpperCase()) || (turn === 'b' && piece === piece.toLowerCase()))) {
         setSelected([r, f]);
       }
@@ -202,7 +212,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Timer className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total Time</p>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total Duration</p>
             <p className="text-xl font-mono font-bold">{formatTotalTime(elapsedSeconds)}</p>
           </div>
         </div>
@@ -267,7 +277,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                     className={cn(
                       "chess-piece text-4xl sm:text-6xl flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform",
                       isSelected && "scale-110",
-                      piece === piece.toUpperCase() ? "text-slate-900" : "text-white drop-shadow-lg"
+                      // Correcting piece colors: White (uppercase) is light, Black (lowercase) is dark
+                      piece === piece.toUpperCase() ? "text-white drop-shadow-lg" : "text-slate-900"
                     )}
                   >
                     {PIECE_ICONS[piece]}
