@@ -41,7 +41,11 @@ export default function PlayPage() {
 
   const createRoom = async () => {
     if (!firestore || !auth) {
-      toast({ title: "Erro de Conexão", description: "O serviço de banco de dados ainda não está pronto.", variant: "destructive" });
+      toast({ 
+        title: "Falha ao Criar Jogo", 
+        description: "Ocorreu um problema técnico ao gerar a sala. Por favor, tente novamente.", 
+        variant: "destructive" 
+      });
       return;
     }
     
@@ -108,34 +112,34 @@ export default function PlayPage() {
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2 rounded-full">
                 <Settings className="w-4 h-4" />
-                Configurações
+                Configuração da Partida
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] rounded-3xl">
+            <DialogContent className="sm:max-w-[425px] rounded-3xl p-8">
               <DialogHeader>
-                <DialogTitle className="text-xl font-bold">Configuração da Partida</DialogTitle>
+                <DialogTitle className="text-2xl font-bold mb-4">Configuração da Partida</DialogTitle>
               </DialogHeader>
-              <div className="grid gap-6 py-4">
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Modo de Jogo</h4>
-                  <div className="grid grid-cols-1 gap-2">
+              <div className="grid gap-6">
+                <div className="space-y-4">
+                  <h4 className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">MODO DE JOGO</h4>
+                  <div className="grid grid-cols-1 gap-3">
                     <Button 
                       variant={activeMode === 'ai' ? 'default' : 'outline'} 
-                      className="justify-start gap-3 h-14 rounded-2xl"
+                      className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
                       onClick={() => {
                         setActiveMode('ai');
                         router.push('/play');
                       }}
                     >
-                      <Brain className="w-5 h-5" />
+                      <Brain className="w-6 h-6 shrink-0" />
                       <div className="text-left">
-                        <div className="font-semibold">Contra IA</div>
-                        <div className="text-[10px] opacity-70">Desafie o Gemini</div>
+                        <div className="font-bold text-base leading-tight">Contra IA</div>
+                        <div className="text-[11px] opacity-70 font-medium">Desafie o Gemini</div>
                       </div>
                     </Button>
                     <Button 
                       variant={activeMode === 'pvp' ? 'default' : 'outline'} 
-                      className="justify-start gap-3 h-14 rounded-2xl"
+                      className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
                       disabled={isCreating}
                       onClick={() => {
                         if (!roomFromUrl) {
@@ -145,39 +149,39 @@ export default function PlayPage() {
                         }
                       }}
                     >
-                      {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Users className="w-5 h-5" />}
+                      {isCreating ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <Users className="w-6 h-6 shrink-0" />}
                       <div className="text-left">
-                        <div className="font-semibold">Online PvP</div>
-                        <div className="text-[10px] opacity-70">Jogue com sua filha</div>
+                        <div className="font-bold text-base leading-tight">Online PvP</div>
+                        <div className="text-[11px] opacity-70 font-medium">Jogue com sua filha</div>
                       </div>
                     </Button>
                     <Button 
                       variant={activeMode === 'learning' ? 'default' : 'outline'} 
-                      className="justify-start gap-3 h-14 rounded-2xl"
+                      className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
                       onClick={() => {
                         setActiveMode('learning');
                         router.push('/play');
                       }}
                     >
-                      <BookOpen className="w-5 h-5" />
+                      <BookOpen className="w-6 h-6 shrink-0" />
                       <div className="text-left">
-                        <div className="font-semibold">Modo Aprendizado</div>
-                        <div className="text-[10px] opacity-70">Feedback em tempo real</div>
+                        <div className="font-bold text-base leading-tight">Modo Aprendizado</div>
+                        <div className="text-[11px] opacity-70 font-medium">Feedback em tempo real</div>
                       </div>
                     </Button>
                   </div>
                 </div>
 
                 {activeMode === 'ai' && (
-                  <div className="space-y-3 pt-4 border-t">
-                    <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Dificuldade da IA</h4>
+                  <div className="space-y-4 pt-4 border-t">
+                    <h4 className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Dificuldade da IA</h4>
                     <div className="grid grid-cols-3 gap-2">
                       {(['easy', 'medium', 'hard'] as const).map((d) => (
                         <Button
                           key={d}
                           variant={difficulty === d ? 'secondary' : 'outline'}
                           onClick={() => setDifficulty(d)}
-                          className="capitalize h-11 rounded-xl"
+                          className="capitalize h-11 rounded-xl font-bold text-xs"
                         >
                           {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Médio' : 'Difícil'}
                         </Button>
