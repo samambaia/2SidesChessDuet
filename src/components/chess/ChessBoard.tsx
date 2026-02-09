@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove, formatTotalTime } from '@/lib/chess-utils';
+import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove, formatTotalTime, expandBoard, flattenBoard } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   useEffect(() => {
     if (remoteGame?.board) {
-      setBoard(remoteGame.board);
+      // Corrigido: Expandir array vindo do Firestore
+      setBoard(expandBoard(remoteGame.board));
       setTurn(remoteGame.turn || 'w');
       
       if (remoteGame.startTime) {
@@ -86,7 +87,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       
       if (gameId && gameRef) {
         await updateDoc(gameRef, {
-          board: nextBoard,
+          board: flattenBoard(nextBoard), // Corrigido: Flatten ao salvar
           turn: 'w',
           lastMove: uci,
           moves: [...(remoteGame?.moves || []), uci]
@@ -141,7 +142,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     if (gameId && gameRef) {
       updateDoc(gameRef, {
-        board: nextBoard,
+        board: flattenBoard(nextBoard), // Corrigido: Flatten ao salvar
         turn: nextTurn,
         lastMove: uci,
         moves: [...(remoteGame?.moves || []), uci]
@@ -275,7 +276,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           className="text-xs text-muted-foreground gap-2 h-8 hover:bg-primary/5"
           onClick={() => {
             if (confirm("Deseja reiniciar a partida? Todo o progresso será perdido.")) {
-              const resetData = { board: INITIAL_BOARD, turn: 'w', moves: [], startTime: serverTimestamp() };
+              const resetData = { 
+                board: flattenBoard(INITIAL_BOARD), // Corrigido: Flatten ao salvar
+                turn: 'w', 
+                moves: [], 
+                startTime: serverTimestamp() 
+              };
               if (gameId && gameRef) updateDoc(gameRef, resetData);
               else { setBoard(INITIAL_BOARD); setTurn('w'); setElapsedSeconds(0); }
               setSelected(null);

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -14,9 +15,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { INITIAL_BOARD } from '@/lib/chess-utils';
+import { INITIAL_BOARD, flattenBoard } from '@/lib/chess-utils';
 import { useToast } from '@/hooks/use-toast';
 
 export default function PlayPage() {
@@ -31,7 +33,6 @@ export default function PlayPage() {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Auto-login anônimo silencioso
   useEffect(() => {
     if (auth && !auth.currentUser) {
       signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
@@ -52,10 +53,9 @@ export default function PlayPage() {
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
       
-      // Criamos o jogo com todos os campos necessários para as regras de segurança
       await setDoc(gameRef, {
         id: newRoomId,
-        board: INITIAL_BOARD,
+        board: flattenBoard(INITIAL_BOARD), // Corrigido: Flatten array
         turn: 'w',
         moves: [],
         startTime: serverTimestamp(),
@@ -63,7 +63,7 @@ export default function PlayPage() {
         player2Id: null,
         mode: 'pvp',
         totalTime: 0,
-        gameRoomId: newRoomId // Mantendo consistência com backend.json
+        gameRoomId: newRoomId
       });
 
       router.push(`/play?room=${newRoomId}`);
@@ -100,9 +100,12 @@ export default function PlayPage() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl p-8">
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold mb-6">Configuração da Partida</DialogTitle>
+                <DialogTitle className="text-2xl font-bold mb-2">Configuração da Partida</DialogTitle>
+                <DialogDescription className="text-muted-foreground text-sm">
+                  Escolha o seu modo de jogo preferido e ajuste a dificuldade.
+                </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-6">
+              <div className="grid gap-6 mt-4">
                 <div className="space-y-4">
                   <h4 className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">MODO DE JOGO</h4>
                   <div className="grid grid-cols-1 gap-3">

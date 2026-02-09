@@ -17,6 +17,20 @@ export const INITIAL_BOARD: PieceType[][] = [
   ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'],
 ];
 
+/** Firestore doesn't support nested arrays. We flatten it to a single array of 64 elements. */
+export function flattenBoard(board: PieceType[][]): PieceType[] {
+  return board.flat();
+}
+
+/** Reconstructs the 8x8 board from a flat 64-element array. */
+export function expandBoard(flatBoard: PieceType[]): PieceType[][] {
+  const board: PieceType[][] = [];
+  for (let i = 0; i < 8; i++) {
+    board.push(flatBoard.slice(i * 8, i * 8 + 8));
+  }
+  return board;
+}
+
 export function boardToFen(board: PieceType[][], activeColor: 'w' | 'b' = 'w'): string {
   let fen = '';
   for (let r = 0; r < 8; r++) {
