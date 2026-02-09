@@ -1,13 +1,13 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw } from 'lucide-react';
+import { Loader2, RotateCcw, Timer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface ChessBoardProps {
@@ -21,7 +21,42 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [turn, setTurn] = useState<'w' | 'b'>('w');
   const [isThinking, setIsThinking] = useState(false);
+  const [whiteTime, setWhiteTime] = useState(600); // 10 minutes
+  const [blackTime, setBlackTime] = useState(600);
   const { toast } = useToast();
+
+  // Timer logic
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (!isThinking) {
+      interval = setInterval(() => {
+        if (turn === 'w') {
+          setWhiteTime((prev) => Math.max(0, prev - 1));
+        } else {
+          setBlackTime((prev) => Math.max(0, prev - 1));
+        }
+      }, 1000);
+    }
+
+    return () => clearInterval(interval);
+  }, [turn, isThinking]);
+
+  // Handle time out
+  useEffect(() => {
+    if (whiteTime === 0) {
+      toast({ title: "Game Over", description: "White ran out of time! Black wins.", variant: "destructive" });
+    }
+    if (blackTime === 0) {
+      toast({ title: "Game Over", description: "Black ran out of time! White wins.", variant: "destructive" });
+    }
+  }, [whiteTime, blackTime, toast]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const executeMove = async (from: [number, number], to: [number, number]) => {
     const [sr, sf] = from;
@@ -139,18 +174,44 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px]">
-      <div className="flex justify-between w-full items-center px-2 mb-2">
-        <div className="flex items-center gap-2 bg-accent/30 px-3 py-1.5 rounded-full border">
-          <div className={cn("w-2 h-2 rounded-full", turn === 'w' ? "bg-primary animate-pulse" : "bg-muted")} />
-          <span className="text-xs font-medium uppercase tracking-wider">{turn === 'w' ? "White" : "Black"}</span>
-        </div>
-        {isThinking && (
-          <div className="flex items-center gap-2 text-primary">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span className="text-[10px] font-bold uppercase tracking-tighter">AI Thinking</span>
+      <div className="grid grid-cols-2 w-full gap-4 mb-2">
+        {/* Black Timer */}
+        <div className={cn(
+          "flex items-center justify-between px-4 py-2 rounded-xl border-2 transition-all",
+          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-lg scale-105" : "bg-accent/30 border-transparent opacity-60"
+        )}>
+          <div className="flex items-center gap-2">
+            <div className={cn("w-2 h-2 rounded-full", turn === 'b' ? "bg-primary animate-pulse" : "bg-muted")} />
+            <span className="text-xs font-bold uppercase tracking-wider">Black</span>
           </div>
-        )}
+          <div className="flex items-center gap-2 font-mono text-lg">
+            <Timer className="w-4 h-4" />
+            {formatTime(blackTime)}
+          </div>
+        </div>
+
+        {/* White Timer */}
+        <div className={cn(
+          "flex items-center justify-between px-4 py-2 rounded-xl border-2 transition-all",
+          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-lg scale-105" : "bg-accent/30 border-transparent opacity-60"
+        )}>
+          <div className="flex items-center gap-2">
+            <div className={cn("w-2 h-2 rounded-full", turn === 'w' ? "bg-primary animate-pulse" : "bg-muted")} />
+            <span className="text-xs font-bold uppercase tracking-wider">White</span>
+          </div>
+          <div className="flex items-center gap-2 font-mono text-lg">
+            <Timer className="w-4 h-4" />
+            {formatTime(whiteTime)}
+          </div>
+        </div>
       </div>
+
+      {isThinking && (
+        <div className="flex items-center gap-2 text-primary animate-bounce mb-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-xs font-bold uppercase tracking-tighter">AI is pondering...</span>
+        </div>
+      )}
 
       <div className="chess-board border-4 border-primary/20 rounded-xl overflow-hidden shadow-2xl">
         {board.map((row, r) => 
@@ -197,10 +258,12 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
           setBoard(INITIAL_BOARD);
           setTurn('w');
           setSelected(null);
+          setWhiteTime(600);
+          setBlackTime(600);
         }}
       >
         <RotateCcw className="w-3 h-3" />
-        Reset Board
+        Reset Match
       </Button>
     </div>
   );
