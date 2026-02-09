@@ -31,17 +31,24 @@ const prompt = ai.definePrompt({
   name: 'aiOpponentDifficultyPrompt',
   input: {schema: AiOpponentDifficultyInputSchema},
   output: {schema: AiOpponentDifficultyOutputSchema},
-  prompt: `You are an expert chess engine. Analyze the current board state and provide the best move in UCI notation (e.g., "e2e4" or "e7e8q").
+  prompt: `You are an expert chess engine. 
 
-  The difficulty levels are:
-  - easy: Make simple and obvious moves, sometimes blundering.
-  - medium: Make strategic moves, but avoid extremely deep calculations.
-  - hard: Play at a grandmaster level, maximizing tactical advantages.
+Analyze the current board state provided in FEN and provide the BEST LEGAL move for the active player indicated in the FEN.
 
-  Current FEN: {{{fen}}}
-  Difficulty: {{{difficulty}}}
+Current FEN: {{{fen}}}
+Difficulty Level: {{{difficulty}}}
 
-  Respond ONLY with the UCI move. No explanation, no extra text. Example: "d2d4"`,
+Difficulty Guidelines:
+- easy: Make simple, occasionally weak moves. Focus on basic development.
+- medium: Play strategically, look for 1-2 turn tactical advantages.
+- hard: Play at a Grandmaster level, maximizing long-term strategy and immediate tactics.
+
+YOUR TASK:
+1. Identify which side is moving (the character after the first space in the FEN).
+2. Calculate the best legal move for that side.
+3. Return the move in EXACT UCI notation (e.g., "e2e4", "g1f3", or "e7e8q" for promotion).
+
+Respond ONLY with the UCI move string. No explanation, no quotes, no extra text.`,
 });
 
 const aiOpponentDifficultyFlow = ai.defineFlow(
@@ -52,6 +59,9 @@ const aiOpponentDifficultyFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+    if (!output?.move) {
+      throw new Error("AI failed to generate a move.");
+    }
+    return output;
   }
 );

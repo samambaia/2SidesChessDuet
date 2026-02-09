@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove, formatTotalTime } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
@@ -60,6 +60,64 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return () => clearInterval(interval);
   }, []);
 
+  const triggerAiMove = useCallback(async (currentBoard: PieceType[][]) => {
+    setIsThinking(true);
+    try {
+      // AI plays Black ('b')
+      const fen = boardToFen(currentBoard, 'b');
+      const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
+      
+      const moveStr = aiResponse.move.trim().toLowerCase();
+      // Robustly find a 4 or 5 character UCI move (e.g. e2e4 or e7e8q)
+      const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
+      
+      if (!uciMatch) {
+        throw new Error(`AI returned an invalid move format: "${moveStr}"`);
+      }
+
+      const uci = uciMatch[0];
+      const { from, to } = uciToMove(uci);
+      const [fromR, fromF] = from;
+      const [toR, toF] = to;
+
+      const pieceToMove = currentBoard[fromR][fromF];
+      if (!pieceToMove) {
+        throw new Error(`AI tried to move from an empty square: ${uci}`);
+      }
+
+      // Check if it's actually a black piece (lowercase)
+      if (pieceToMove !== pieceToMove.toLowerCase()) {
+        throw new Error(`AI tried to move a white piece: ${uci}`);
+      }
+
+      const nextBoard = currentBoard.map(row => [...row]);
+      nextBoard[toR][toF] = nextBoard[fromR][fromF];
+      nextBoard[fromR][fromF] = null;
+      
+      // Update state
+      setBoard(nextBoard);
+      setTurn('w');
+      
+      if (gameId && gameRef) {
+        await updateDoc(gameRef, {
+          board: nextBoard,
+          turn: 'w',
+          lastMove: uci,
+          moves: [...(remoteGame?.moves || []), uci]
+        });
+      }
+    } catch (error: any) {
+      console.error("AI Move failed:", error);
+      toast({
+        title: "AI Match Error",
+        description: error.message || "The AI failed to calculate a valid move.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsThinking(false);
+    }
+  }, [difficulty, gameId, gameRef, remoteGame, toast]);
+
   const executeMove = async (from: [number, number], to: [number, number]) => {
     const [sr, sf] = from;
     const [r, f] = to;
@@ -94,79 +152,31 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }
     }
 
-    const newBoard = board.map(row => [...row]);
-    newBoard[r][f] = newBoard[sr][sf];
-    newBoard[sr][sf] = null;
+    const nextBoard = board.map(row => [...row]);
+    nextBoard[r][f] = nextBoard[sr][sf];
+    nextBoard[sr][sf] = null;
     
     const nextTurn = turn === 'w' ? 'b' : 'w';
 
-    // Local update for responsiveness
-    setBoard(newBoard);
+    // Update local state
+    setBoard(nextBoard);
     setSelected(null);
     setTurn(nextTurn);
 
     // Persist to Firestore if in pvp mode or sync is active
     if (gameId && gameRef) {
       updateDoc(gameRef, {
-        board: newBoard,
+        board: nextBoard,
         turn: nextTurn,
         lastMove: uci,
         moves: [...(remoteGame?.moves || []), uci]
       }).catch(() => {});
     }
 
+    // Trigger AI move if it's AI mode and it's Black's turn
     if (mode === 'ai' && nextTurn === 'b') {
-      triggerAiMove(newBoard);
-    }
-  };
-
-  const triggerAiMove = async (currentBoard: PieceType[][]) => {
-    setIsThinking(true);
-    try {
-      const fen = boardToFen(currentBoard, 'b');
-      const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
-      
-      const moveStr = aiResponse.move.trim().toLowerCase();
-      // Robustly find a 4 or 5 character UCI move (e.g. e2e4 or e7e8q)
-      const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
-      
-      if (!uciMatch) {
-        throw new Error(`Invalid move format: ${moveStr}`);
-      }
-
-      const uci = uciMatch[0];
-      const { from, to } = uciToMove(uci);
-      const [fromR, fromF] = from;
-      const [toR, toF] = to;
-
-      if (!currentBoard[fromR][fromF]) {
-        throw new Error(`AI tried to move from an empty square: ${uci}`);
-      }
-
-      const newBoard = currentBoard.map(row => [...row]);
-      newBoard[toR][toF] = newBoard[fromR][fromF];
-      newBoard[fromR][fromF] = null;
-      
-      setBoard(newBoard);
-      setTurn('w');
-      setIsThinking(false);
-      
-      if (gameId && gameRef) {
-        updateDoc(gameRef, {
-          board: newBoard,
-          turn: 'w',
-          lastMove: uci,
-          moves: [...(remoteGame?.moves || []), uci]
-        });
-      }
-    } catch (error) {
-      console.error("AI Move failed:", error);
-      setIsThinking(false);
-      toast({
-        title: "AI Error",
-        description: "The AI failed to calculate a move. Please try again.",
-        variant: "destructive"
-      });
+      // Small delay for natural feel
+      setTimeout(() => triggerAiMove(nextBoard), 500);
     }
   };
 
