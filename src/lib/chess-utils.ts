@@ -1,5 +1,5 @@
 
-export type PieceType = 'p' | 'n' | 'b' | 'q' | 'k' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | null;
+export type PieceType = 'p' | 'n' | 'b' | 'q' | 'k' | 'r' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | null;
 export type Square = {
   rank: number;
   file: number;
@@ -19,7 +19,13 @@ export const INITIAL_BOARD: PieceType[][] = [
 
 /** Firestore doesn't support nested arrays. We flatten it to a single array of 64 elements. */
 export function flattenBoard(board: PieceType[][]): PieceType[] {
-  return board.flat();
+  const flat: PieceType[] = [];
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      flat.push(board[r][f]);
+    }
+  }
+  return flat;
 }
 
 /** Reconstructs the 8x8 board from a flat 64-element array. */

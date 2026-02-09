@@ -39,7 +39,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   useEffect(() => {
     if (remoteGame?.board) {
-      // Corrigido: Expandir array vindo do Firestore
       setBoard(expandBoard(remoteGame.board));
       setTurn(remoteGame.turn || 'w');
       
@@ -87,7 +86,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       
       if (gameId && gameRef) {
         await updateDoc(gameRef, {
-          board: flattenBoard(nextBoard), // Corrigido: Flatten ao salvar
+          board: flattenBoard(nextBoard),
           turn: 'w',
           lastMove: uci,
           moves: [...(remoteGame?.moves || []), uci]
@@ -142,7 +141,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     if (gameId && gameRef) {
       updateDoc(gameRef, {
-        board: flattenBoard(nextBoard), // Corrigido: Flatten ao salvar
+        board: flattenBoard(nextBoard),
         turn: nextTurn,
         lastMove: uci,
         moves: [...(remoteGame?.moves || []), uci]
@@ -167,12 +166,25 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
-  const copyInviteLink = () => {
+  const copyInviteLink = async () => {
     const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    setHasCopied(true);
-    toast({ title: "Link Copiado!", description: "Envie este link para sua filha entrar no jogo." });
-    setTimeout(() => setHasCopied(false), 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+        setHasCopied(true);
+        toast({ title: "Link Copiado!", description: "Envie este link para sua filha entrar no jogo." });
+        setTimeout(() => setHasCopied(false), 2000);
+      } else {
+        throw new Error("Clipboard API not available");
+      }
+    } catch (err) {
+      console.warn("Failed to copy using API, falling back:", err);
+      toast({ 
+        title: "Copie o link manualmente", 
+        description: `O navegador bloqueou a cópia automática. Link: ${url}`,
+        variant: "default"
+      });
+    }
   };
 
   return (
@@ -277,7 +289,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           onClick={() => {
             if (confirm("Deseja reiniciar a partida? Todo o progresso será perdido.")) {
               const resetData = { 
-                board: flattenBoard(INITIAL_BOARD), // Corrigido: Flatten ao salvar
+                board: flattenBoard(INITIAL_BOARD),
                 turn: 'w', 
                 moves: [], 
                 startTime: serverTimestamp() 

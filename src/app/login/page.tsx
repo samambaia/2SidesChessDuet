@@ -8,9 +8,33 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Zap, Github, Chrome } from 'lucide-react';
+import { useAuth } from '@/firebase';
+import { signInWithPopup, GoogleAuthProvider, GithubAuthProvider } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
+  const auth = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const handleSocialLogin = async (providerName: 'google' | 'github') => {
+    if (!auth) return;
+    const provider = providerName === 'google' ? new GoogleAuthProvider() : new GithubAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+      toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
+      router.push('/');
+    } catch (error: any) {
+      console.error("Login error:", error);
+      toast({ 
+        title: "Erro no Login", 
+        description: "Não foi possível realizar a autenticação social.",
+        variant: "destructive"
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-accent/30 px-4">
@@ -35,11 +59,11 @@ export default function LoginPage() {
         <Card className="border-none shadow-2xl">
           <CardHeader className="space-y-4 pt-8">
             <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full" onClick={() => handleSocialLogin('github')}>
                 <Github className="mr-2 h-4 w-4" />
                 Github
               </Button>
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full" onClick={() => handleSocialLogin('google')}>
                 <Chrome className="mr-2 h-4 w-4" />
                 Google
               </Button>
