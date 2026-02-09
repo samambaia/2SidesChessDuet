@@ -1,0 +1,139 @@
+/**
+ * ChessDuet Security Rules
+ *
+ * Core Philosophy:
+ * This ruleset implements a hybrid security model tailored for a peer-to-peer chess experience. 
+ * 1. User Privacy: Strict ownership-based access for user profile data.
+ * 2. Collaborative Gameplay: Shared access for GameRooms and Games based on participant IDs.
+ * 3. Discovery & Joining: GameRooms are readable to allow players to join via shared IDs/links, 
+ *    but write operations are strictly limited to the participating players.
+ *
+ * Data Structure:
+ * - /users/{userId}: Private user profiles.
+ * - /game_rooms/{gameRoomId}: Metadata for a match, including player UIDs.
+ * - /games/{gameId}: Individual game state, including moves and timers.
+ *
+ * Key Security Decisions:
+ * - Authorization Independence: Critical IDs (player1Id, player2Id) are denormalized 
+ *   from GameRooms into Games to allow for efficient, single-document security lookups 
+ *   without cross-collection get() calls.
+ * - Immvutability: Once a game is associated with a player, that association cannot be changed.
+ * - Prototyping Flexibility: Schema validation is omitted to allow rapid UI iteration, 
+ *   focusing exclusively on identity and relationship integrity.
+ */
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+
+    /** 
+     * @description Checks if the request is from an authenticated user.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** 
+     * @description Checks if the authenticated user matches the provided userId.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** 
+     * @description Combines existence check and ownership for updates/deletes.
+     */
+    function isExistingOwner(userId) {
+      return resource != null && isOwner(userId);
+    }
+
+    /** 
+     * @description Checks if the authenticated user is one of the two players defined in the document data.
+     * This relies on denormalized player fields.
+     */
+    function isParticipant(data) {
+      return isSignedIn() && (request.auth.uid == data.player1Id || request.auth.uid == data.player2Id);
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Rules for user profile documents.
+     * @path /users/{userId}
+     * @allow (create) if auth.uid matches userId.
+     * @deny (update) if auth.uid does not match userId.
+     * @principle Path-based ownership ensures users can only manage their own profile data.
+     */
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Rules for Game Rooms. Allows players to create rooms and others to join.
+     * @path /game_rooms/{gameRoomId}
+     * @allow (get) for any authenticated user to allow joining via ID/link.
+     * @allow (update) if the user is player1 or if they are filling the empty player2 slot.
+     * @principle Shared access model allowing for discovery and restricted participation.
+     */
+    match /game_rooms/{gameRoomId} {
+      // Allow get so users can find the room to join it; list is restricted to signed in users.
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      // Player 1 creates the room
+      allow create: if isSignedIn() 
+        && request.resource.data.player1Id == request.auth.uid
+        && request.resource.data.id == gameRoomId;
+      
+      // Update allowed if:
+      // 1. User is already a participant (player1 or player2).
+      // 2. User is joining as player2 (player2Id was null and is now being set to auth.uid).
+      allow update: if resource != null && (
+        isParticipant(resource.data) || 
+        (resource.data.player2Id == null && request.resource.data.player2Id == request.auth.uid)
+      ) && request.resource.data.player1Id == resource.data.player1Id;
+
+      // Only the creator (player1) can delete the room.
+      allow delete: if resource != null && resource.data.player1Id == request.auth.uid;
+    }
+
+    /**
+     * @description Rules for Games. Secures the actual gameplay data.
+     * @path /games/{gameId}
+     * @allow (read/write) if the user is player1 or player2 in the denormalized data.
+     * @deny (create) if the creator is not one of the participants.
+     * @principle Relational integrity enforced via denormalized participant IDs for fast authorization.
+     */
+    match /games/{gameId} {
+      // Participants can view and list games they are part of.
+      allow get, list: if isParticipant(resource.data);
+      
+      // Only a participant can initialize the game document.
+      allow create: if isParticipant(request.resource.data) 
+        && request.resource.data.id == gameId;
+
+      // Only participants can update the game (e.g., adding moves, updating time).
+      // We enforce that the participants cannot be changed during an update.
+      allow update: if resource != null 
+        && isParticipant(resource.data)
+        && request.resource.data.player1Id == resource.data.player1Id
+        && request.resource.data.player2Id == resource.data.player2Id;
+
+      // Either participant can delete the record of the game.
+      allow delete: if resource != null && isParticipant(resource.data);
+    }
+  }
+}
+
+/**
+ * PROTOTYPING MODE NOTICE:
+ * These rules enforce strict authorization (who can access).
+ * They do NOT enforce data validation (what the data looks like), except for fields 
+ * required for security (IDs and ownership). This allows you to add or remove 
+ * fields like 'totalTime' or 'moves' without updating these rules.
+ */
