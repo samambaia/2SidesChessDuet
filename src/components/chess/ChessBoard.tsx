@@ -19,7 +19,7 @@ interface ChessBoardProps {
 }
 
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
-  const { firestore } = useFirestore();
+  const firestore = useFirestore();
   const { toast } = useToast();
   
   const [board, setBoard] = useState<PieceType[][]>(INITIAL_BOARD);
@@ -60,13 +60,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const triggerAiMove = useCallback(async (currentBoard: PieceType[][]) => {
     setIsThinking(true);
     try {
+      // Explicitly tell the AI it is Black's turn
       const fen = boardToFen(currentBoard, 'b');
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       
       const moveStr = aiResponse.move.trim().toLowerCase();
+      // Match something like "e7e5" or "g1f3"
       const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
       
-      if (!uciMatch) throw new Error("Move format error");
+      if (!uciMatch) throw new Error("Move format error from AI");
 
       const uci = uciMatch[0];
       const { from, to } = uciToMove(uci);
@@ -93,7 +95,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, gameId, gameRef, remoteGame]);
+  }, [difficulty, gameId, gameRef, remoteGame?.moves]);
 
   const executeMove = async (from: [number, number], to: [number, number]) => {
     const [sr, sf] = from;
@@ -140,7 +142,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
 
     if (mode === 'ai' && nextTurn === 'b') {
-      setTimeout(() => triggerAiMove(nextBoard), 500);
+      // Trigger AI move with a slight delay for realism
+      setTimeout(() => triggerAiMove(nextBoard), 600);
     }
   };
 
@@ -278,4 +281,3 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     </div>
   );
 }
-

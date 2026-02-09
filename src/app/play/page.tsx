@@ -23,8 +23,8 @@ import { useToast } from '@/hooks/use-toast';
 export default function PlayPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { auth } = useAuth();
-  const { firestore } = useFirestore();
+  const auth = useAuth();
+  const firestore = useFirestore();
   const { toast } = useToast();
   
   const roomFromUrl = searchParams.get('room');
@@ -47,7 +47,6 @@ export default function PlayPage() {
     
     setIsCreating(true);
     try {
-      // Garantir que o usuário está logado antes de tentar escrever no Firestore
       let currentUser = auth.currentUser;
       if (!currentUser) {
         const cred = await signInAnonymously(auth);
