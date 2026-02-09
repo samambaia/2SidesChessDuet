@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -32,7 +31,7 @@ export default function PlayPage() {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Auto-login anônimo para permitir gravações no Firestore
+  // Auto-login anônimo silencioso
   useEffect(() => {
     if (auth && !auth.currentUser) {
       signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
@@ -42,6 +41,8 @@ export default function PlayPage() {
   const createRoom = async () => {
     setIsCreating(true);
     try {
+      if (!auth || !firestore) throw new Error("Serviços não prontos");
+
       let currentUser = auth.currentUser;
       if (!currentUser) {
         const cred = await signInAnonymously(auth);
@@ -51,6 +52,7 @@ export default function PlayPage() {
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
       
+      // Criamos o jogo com todos os campos necessários para as regras de segurança
       await setDoc(gameRef, {
         id: newRoomId,
         board: INITIAL_BOARD,
@@ -59,7 +61,9 @@ export default function PlayPage() {
         startTime: serverTimestamp(),
         player1Id: currentUser.uid,
         player2Id: null,
-        mode: 'pvp'
+        mode: 'pvp',
+        totalTime: 0,
+        gameRoomId: newRoomId // Mantendo consistência com backend.json
       });
 
       router.push(`/play?room=${newRoomId}`);
@@ -87,23 +91,11 @@ export default function PlayPage() {
         </Link>
 
         <div className="ml-auto flex items-center gap-3">
-          {activeMode === 'pvp' && !roomFromUrl && (
-            <Button 
-              onClick={createRoom} 
-              disabled={isCreating}
-              size="sm" 
-              className="rounded-full gap-2"
-            >
-              {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Novo Jogo Online
-            </Button>
-          )}
-          
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2 rounded-full shadow-sm">
                 <Settings className="w-4 h-4" />
-                Configuração
+                Game Settings
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl p-8">
@@ -128,24 +120,39 @@ export default function PlayPage() {
                         <div className="text-[11px] opacity-70 font-medium">Desafie o Gemini</div>
                       </div>
                     </Button>
-                    <Button 
-                      variant={activeMode === 'pvp' ? 'default' : 'outline'} 
-                      className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
-                      disabled={isCreating}
-                      onClick={() => {
-                        if (!roomFromUrl) {
-                          createRoom();
-                        } else {
-                          setActiveMode('pvp');
-                        }
-                      }}
-                    >
-                      {isCreating ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <Users className="w-6 h-6 shrink-0" />}
-                      <div className="text-left">
-                        <div className="font-bold text-base leading-tight">Online PvP</div>
-                        <div className="text-[11px] opacity-70 font-medium">Jogue com amigos</div>
-                      </div>
-                    </Button>
+                    
+                    <div className="space-y-2">
+                      <Button 
+                        variant={activeMode === 'pvp' ? 'default' : 'outline'} 
+                        className="w-full justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
+                        disabled={isCreating}
+                        onClick={() => {
+                          if (roomFromUrl) {
+                            setActiveMode('pvp');
+                          } else {
+                            createRoom();
+                          }
+                        }}
+                      >
+                        {isCreating ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <Users className="w-6 h-6 shrink-0" />}
+                        <div className="text-left">
+                          <div className="font-bold text-base leading-tight">Online PvP</div>
+                          <div className="text-[11px] opacity-70 font-medium">Jogue com amigos</div>
+                        </div>
+                      </Button>
+                      {!roomFromUrl && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="w-full text-[10px] font-bold uppercase tracking-wider"
+                          onClick={createRoom}
+                          disabled={isCreating}
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Criar Nova Sala Online
+                        </Button>
+                      )}
+                    </div>
+
                     <Button 
                       variant={activeMode === 'learning' ? 'default' : 'outline'} 
                       className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
@@ -199,7 +206,7 @@ export default function PlayPage() {
             Status da Partida
           </p>
           <p className="text-sm font-medium">
-            {roomFromUrl ? `Sala Online: ${roomFromUrl}` : activeMode === 'ai' ? `Jogando contra IA (${difficulty === 'easy' ? 'Fácil' : difficulty === 'medium' ? 'Médio' : 'Difícil'})` : activeMode === 'learning' ? 'Modo Aprendizado' : 'Inicie um jogo'}
+            {roomFromUrl ? `Sala Online: ${roomFromUrl}` : activeMode === 'ai' ? `Jogando contra IA (${difficulty === 'easy' ? 'Fácil' : difficulty === 'medium' ? 'Médio' : 'Difícil'})` : activeMode === 'learning' ? 'Modo Aprendizado' : 'Escolha um modo de jogo'}
           </p>
         </div>
       </main>
