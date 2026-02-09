@@ -7,7 +7,7 @@ import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Copy, Check, Info } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -47,8 +47,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         const now = Date.now();
         setElapsedSeconds(Math.floor((now - start) / 1000));
       }
+    } else if (!gameId) {
+      setBoard(INITIAL_BOARD);
+      setTurn('w');
+      setElapsedSeconds(0);
     }
-  }, [remoteGame]);
+  }, [remoteGame, gameId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -60,12 +64,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const triggerAiMove = useCallback(async (currentBoard: PieceType[][]) => {
     setIsThinking(true);
     try {
-      // Explicitly tell the AI it is Black's turn
       const fen = boardToFen(currentBoard, 'b');
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       
       const moveStr = aiResponse.move.trim().toLowerCase();
-      // Match something like "e7e5" or "g1f3"
       const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
       
       if (!uciMatch) throw new Error("Move format error from AI");
@@ -110,15 +112,20 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     if (mode === 'learning') {
       setIsThinking(true);
-      const feedback = await getMoveFeedback({
-        currentBoardState: boardToFen(board, turn),
-        userMove: uci
-      });
-      setIsThinking(false);
-      if (!feedback.isLegalMove) {
-        toast({ title: "Movimento Inválido", description: feedback.feedback, variant: "destructive" });
-        setSelected(null);
-        return;
+      try {
+        const feedback = await getMoveFeedback({
+          currentBoardState: boardToFen(board, turn),
+          userMove: uci
+        });
+        if (!feedback.isLegalMove) {
+          toast({ title: "Movimento Inválido", description: feedback.feedback, variant: "destructive" });
+          setSelected(null);
+          return;
+        }
+      } catch (err) {
+        console.error("Feedback error:", err);
+      } finally {
+        setIsThinking(false);
       }
     }
 
@@ -142,7 +149,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
 
     if (mode === 'ai' && nextTurn === 'b') {
-      // Trigger AI move with a slight delay for realism
       setTimeout(() => triggerAiMove(nextBoard), 600);
     }
   };
@@ -198,8 +204,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <div className="w-full bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
           <Info className="w-4 h-4 text-blue-500 mt-0.5" />
           <div className="flex-1">
-            <p className="text-xs text-blue-700 font-medium">Você está jogando Online!</p>
-            <p className="text-[10px] text-blue-600">Para jogar com alguém, mande o link da página para ela.</p>
+            <p className="text-xs text-blue-700 font-medium">Jogo Online Ativo</p>
+            <p className="text-[10px] text-blue-600">Compartilhe o link da página para jogar com outra pessoa.</p>
           </div>
         </div>
       )}
@@ -268,10 +274,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           size="sm" 
           className="text-xs text-muted-foreground gap-2 h-8 hover:bg-primary/5"
           onClick={() => {
-            const resetData = { board: INITIAL_BOARD, turn: 'w', moves: [], startTime: serverTimestamp() };
-            if (gameId && gameRef) updateDoc(gameRef, resetData);
-            else { setBoard(INITIAL_BOARD); setTurn('w'); setElapsedSeconds(0); }
-            setSelected(null);
+            if (confirm("Deseja reiniciar a partida? Todo o progresso será perdido.")) {
+              const resetData = { board: INITIAL_BOARD, turn: 'w', moves: [], startTime: serverTimestamp() };
+              if (gameId && gameRef) updateDoc(gameRef, resetData);
+              else { setBoard(INITIAL_BOARD); setTurn('w'); setElapsedSeconds(0); }
+              setSelected(null);
+            }
           }}
         >
           <RotateCcw className="w-3 h-3" />

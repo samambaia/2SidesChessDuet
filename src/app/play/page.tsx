@@ -32,7 +32,7 @@ export default function PlayPage() {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Auto-login anonymously to enable Firestore writes
+  // Auto-login anônimo para permitir gravações no Firestore
   useEffect(() => {
     if (auth && !auth.currentUser) {
       signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
@@ -40,15 +40,6 @@ export default function PlayPage() {
   }, [auth]);
 
   const createRoom = async () => {
-    if (!firestore || !auth) {
-      toast({ 
-        title: "Falha ao Criar Jogo", 
-        description: "Ocorreu um problema técnico ao gerar a sala. Por favor, tente novamente.", 
-        variant: "destructive" 
-      });
-      return;
-    }
-    
     setIsCreating(true);
     try {
       let currentUser = auth.currentUser;
@@ -73,12 +64,12 @@ export default function PlayPage() {
 
       router.push(`/play?room=${newRoomId}`);
       setActiveMode('pvp');
-      toast({ title: "Sala Criada!", description: "Agora você pode compartilhar o link com seu oponente." });
+      toast({ title: "Sala Criada!", description: "Compartilhe o link para começar." });
     } catch (error: any) {
       console.error("Erro ao criar sala:", error);
       toast({ 
         title: "Falha ao Criar Jogo", 
-        description: "Ocorreu um problema técnico ao gerar a sala. Por favor, tente novamente.", 
+        description: "Ocorreu um problema técnico. Por favor, tente novamente.", 
         variant: "destructive" 
       });
     } finally {
@@ -110,14 +101,14 @@ export default function PlayPage() {
           
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2 rounded-full">
+              <Button variant="outline" size="sm" className="gap-2 rounded-full shadow-sm">
                 <Settings className="w-4 h-4" />
-                Configuração da Partida
+                Configuração
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl p-8">
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold mb-4">Configuração da Partida</DialogTitle>
+                <DialogTitle className="text-2xl font-bold mb-6">Configuração da Partida</DialogTitle>
               </DialogHeader>
               <div className="grid gap-6">
                 <div className="space-y-4">
@@ -128,7 +119,7 @@ export default function PlayPage() {
                       className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
                       onClick={() => {
                         setActiveMode('ai');
-                        router.push('/play');
+                        if (roomFromUrl) router.push('/play');
                       }}
                     >
                       <Brain className="w-6 h-6 shrink-0" />
@@ -152,7 +143,7 @@ export default function PlayPage() {
                       {isCreating ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <Users className="w-6 h-6 shrink-0" />}
                       <div className="text-left">
                         <div className="font-bold text-base leading-tight">Online PvP</div>
-                        <div className="text-[11px] opacity-70 font-medium">Jogue com sua filha</div>
+                        <div className="text-[11px] opacity-70 font-medium">Jogue com amigos</div>
                       </div>
                     </Button>
                     <Button 
@@ -160,7 +151,7 @@ export default function PlayPage() {
                       className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
                       onClick={() => {
                         setActiveMode('learning');
-                        router.push('/play');
+                        if (roomFromUrl) router.push('/play');
                       }}
                     >
                       <BookOpen className="w-6 h-6 shrink-0" />
@@ -205,17 +196,11 @@ export default function PlayPage() {
         </div>
         <div className="mt-8 text-center space-y-1">
           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">
-            Partida Atual
+            Status da Partida
           </p>
           <p className="text-sm font-medium">
-            {roomFromUrl ? `Sala Online: ${roomFromUrl}` : activeMode === 'ai' ? `vs IA (${difficulty})` : 'Aguardando Início...'}
+            {roomFromUrl ? `Sala Online: ${roomFromUrl}` : activeMode === 'ai' ? `Jogando contra IA (${difficulty === 'easy' ? 'Fácil' : difficulty === 'medium' ? 'Médio' : 'Difícil'})` : activeMode === 'learning' ? 'Modo Aprendizado' : 'Inicie um jogo'}
           </p>
-          {activeMode === 'pvp' && !roomFromUrl && !isCreating && (
-            <p className="text-xs text-primary animate-pulse font-medium">Clique em "Novo Jogo Online" para começar</p>
-          )}
-          {isCreating && (
-            <p className="text-xs text-muted-foreground animate-pulse font-medium">Gerando sua sala exclusiva...</p>
-          )}
         </div>
       </main>
     </div>
