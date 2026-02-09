@@ -42,14 +42,18 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error("Login error:", error);
       let errorMessage = "Não foi possível realizar a autenticação social.";
-      if (error.code === 'auth/popup-closed-by-user') {
+      
+      // Detalhando o erro para ajudar o usuário a configurar o Firebase
+      if (error.code === 'auth/operation-not-allowed') {
+        errorMessage = `O provedor ${providerName} não está habilitado no Console do Firebase (Auth > Sign-in method).`;
+      } else if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = "A janela de login foi fechada antes da conclusão.";
-      } else if (error.code === 'auth/operation-not-allowed') {
-        errorMessage = `O provedor ${providerName} não está habilitado no Console do Firebase.`;
+      } else if (error.code === 'auth/unauthorized-domain') {
+        errorMessage = "Este domínio não está autorizado no Console do Firebase (Auth > Settings > Authorized Domains).";
       }
       
       toast({ 
-        title: "Erro no Login", 
+        title: "Erro na Autenticação", 
         description: errorMessage,
         variant: "destructive"
       });

@@ -18,7 +18,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { INITIAL_BOARD, flattenBoard } from '@/lib/chess-utils';
+import { INITIAL_FEN } from '@/lib/chess-utils';
 import { useToast } from '@/hooks/use-toast';
 
 export default function PlayPage() {
@@ -33,6 +33,7 @@ export default function PlayPage() {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCreating, setIsCreating] = useState(false);
 
+  // Garantir que o usuário esteja autenticado anonimamente se não estiver logado
   useEffect(() => {
     if (auth && !auth.currentUser) {
       signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
@@ -42,7 +43,7 @@ export default function PlayPage() {
   const createRoom = async () => {
     setIsCreating(true);
     try {
-      if (!auth || !firestore) throw new Error("Serviços não prontos");
+      if (!auth || !firestore) throw new Error("Serviços do Firebase não inicializados.");
 
       let currentUser = auth.currentUser;
       if (!currentUser) {
@@ -53,9 +54,10 @@ export default function PlayPage() {
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
       
+      // Corrigido: Usamos 'fen' em vez de arrays aninhados para evitar erros do Firestore
       await setDoc(gameRef, {
         id: newRoomId,
-        board: flattenBoard(INITIAL_BOARD), // Corrigido: Flatten array
+        fen: INITIAL_FEN,
         turn: 'w',
         moves: [],
         startTime: serverTimestamp(),

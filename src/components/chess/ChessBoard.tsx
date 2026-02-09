@@ -23,7 +23,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  // Internal engine state
+  // Instância do motor de xadrez estável
   const game = useMemo(() => new Chess(), []);
   
   const [board, setBoard] = useState(chessJsToBoard(game));
@@ -34,7 +34,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [hasCopied, setHasCopied] = useState(false);
 
-  // Firestore sync
+  // Sincronização com Firestore
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
     return doc(firestore, 'games', gameId);
@@ -42,7 +42,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Sync with remote state
+  // Sincronizar estado local com o remoto (pvp)
   useEffect(() => {
     if (remoteGame?.fen) {
       try {
@@ -56,9 +56,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           setElapsedSeconds(Math.floor((now - start) / 1000));
         }
       } catch (e) {
-        console.error("Failed to load FEN:", remoteGame.fen);
+        console.error("Falha ao carregar FEN remoto:", remoteGame.fen);
       }
     } else if (!gameId) {
+      // Reiniciar para jogo local
       game.load(INITIAL_FEN);
       setBoard(chessJsToBoard(game));
       setTurn('w');
@@ -66,7 +67,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, gameId, game]);
 
-  // Game timer
+  // Timer do jogo
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsedSeconds(prev => prev + 1);
@@ -93,6 +94,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       
       const moveStr = aiResponse.move.trim().toLowerCase();
+      // Tentar realizar o movimento da IA no motor local
       const move = game.move(moveStr);
       
       if (move) {
@@ -101,7 +103,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         await syncToFirestore();
       }
     } catch (error: any) {
-      console.error("AI Move failed:", error);
+      console.error("Movimento da IA falhou:", error);
     } finally {
       setIsThinking(false);
     }
@@ -113,7 +115,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const from = selected;
     const uci = `${from}${to}`;
 
-    // Learning Mode AI validation
+    // Modo Aprendizado: Validação por IA
     if (mode === 'learning') {
       setIsThinking(true);
       try {
@@ -128,13 +130,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           return;
         }
       } catch (err) {
-        console.error("Feedback error:", err);
+        console.error("Erro no feedback da IA:", err);
       } finally {
         setIsThinking(false);
       }
     }
 
-    // Try move in engine (handles rules, castling, promotion, etc)
+    // Executar no motor (regras, roque, promoção automática para rainha)
     try {
       const move = game.move({ from, to, promotion: 'q' });
       
@@ -150,12 +152,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       await syncToFirestore();
 
       if (game.isCheckmate()) {
-        toast({ title: "Fim de Jogo!", description: `Xeque-mate! ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.` });
+        toast({ title: "Fim de Jogo!", description: `Xeque-mate! As ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.` });
       } else if (game.isDraw()) {
         toast({ title: "Empate!", description: "A partida terminou em empate." });
       }
 
-      // Trigger AI if applicable
+      // Se for contra IA e o turno for dela
       if (mode === 'ai' && game.turn() === 'b' && !game.isGameOver()) {
         setTimeout(triggerAiMove, 600);
       }
@@ -169,13 +171,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     const squareName = getSquareName(r, f);
 
-    // If a move destination is clicked
+    // Se clicou em um destino possível
     if (selected && possibleMoves.includes(squareName)) {
       executeMove(squareName);
       return;
     }
 
-    // If selecting a piece
+    // Selecionar peça
     const piece = game.get(squareName);
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
@@ -190,15 +192,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const copyInviteLink = async () => {
     const url = window.location.href;
     try {
+      // Tentativa de cópia moderna
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(url);
         setHasCopied(true);
-        toast({ title: "Link Copiado!", description: "Envie este link para sua filha entrar no jogo." });
+        toast({ title: "Link Copiado!", description: "Envie para o oponente agora." });
         setTimeout(() => setHasCopied(false), 2000);
       } else {
-        throw new Error("Clipboard API not available");
+        throw new Error("Clipboard API indisponível");
       }
     } catch (err) {
+      // Fallback para cópia manual caso o navegador bloqueie por permissão
       toast({ 
         title: "Copie o link manualmente", 
         description: `Link: ${url}`,
@@ -286,9 +290,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                     className={cn(
                       "chess-piece text-4xl sm:text-6xl flex items-center justify-center transition-transform",
                       isSelected && "scale-110",
+                      // Peças Brancas (Maiúsculas) vs Pretas (Minúsculas)
                       piece === piece.toUpperCase() 
-                        ? "text-slate-100 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" 
-                        : "text-slate-950"
+                        ? "text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" 
+                        : "text-slate-900"
                     )}
                   >
                     {PIECE_ICONS[piece]}
