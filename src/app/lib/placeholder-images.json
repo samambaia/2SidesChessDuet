@@ -1,0 +1,23 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "hero-chess",
+      "description": "A professional chess board set in a modern room",
+      "imageUrl": "https://picsum.photos/seed/chess1/1200/800",
+      "imageHint": "chess board"
+    },
+    {
+      "id": "ai-feature",
+      "description": "Abstract representation of artificial intelligence",
+      "imageUrl": "https://picsum.photos/seed/ai/600/400",
+      "imageHint": "artificial intelligence"
+    },
+    {
+      "id": "social-play",
+      "description": "People playing games together online",
+      "imageUrl": "https://picsum.photos/seed/social/600/400",
+      "imageHint": "online gaming"
+    }
+  ]
+}
