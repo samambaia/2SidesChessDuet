@@ -1,68 +1,9 @@
 
+import { Chess, Square as ChessSquare } from 'chess.js';
+
 export type PieceType = 'p' | 'n' | 'b' | 'q' | 'k' | 'r' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | null;
-export type Square = {
-  rank: number;
-  file: number;
-  piece: PieceType;
-};
 
-export const INITIAL_BOARD: PieceType[][] = [
-  ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
-  ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
-  [null, null, null, null, null, null, null, null],
-  [null, null, null, null, null, null, null, null],
-  [null, null, null, null, null, null, null, null],
-  [null, null, null, null, null, null, null, null],
-  ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
-  ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'],
-];
-
-/** Firestore doesn't support nested arrays. We flatten it to a single array of 64 elements. */
-export function flattenBoard(board: PieceType[][]): PieceType[] {
-  const flat: PieceType[] = [];
-  for (let r = 0; r < 8; r++) {
-    for (let f = 0; f < 8; f++) {
-      flat.push(board[r][f]);
-    }
-  }
-  return flat;
-}
-
-/** Reconstructs the 8x8 board from a flat 64-element array. */
-export function expandBoard(flatBoard: PieceType[]): PieceType[][] {
-  const board: PieceType[][] = [];
-  for (let i = 0; i < 8; i++) {
-    board.push(flatBoard.slice(i * 8, i * 8 + 8));
-  }
-  return board;
-}
-
-export function boardToFen(board: PieceType[][], activeColor: 'w' | 'b' = 'w'): string {
-  let fen = '';
-  for (let r = 0; r < 8; r++) {
-    let emptyCount = 0;
-    for (let f = 0; f < 8; f++) {
-      const piece = board[r][f];
-      if (piece === null) {
-        emptyCount++;
-      } else {
-        if (emptyCount > 0) {
-          fen += emptyCount;
-          emptyCount = 0;
-        }
-        fen += piece;
-      }
-    }
-    if (emptyCount > 0) {
-      fen += emptyCount;
-    }
-    if (r < 7) {
-      fen += '/';
-    }
-  }
-  fen += ` ${activeColor} KQkq - 0 1`;
-  return fen;
-}
+export const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export function formatTotalTime(seconds: number): string {
   const days = Math.floor(seconds / (24 * 3600));
@@ -79,21 +20,44 @@ export function formatTotalTime(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function uciToMove(uci: string): { from: [number, number], to: [number, number] } {
-  const files = 'abcdefgh';
-  const fromFile = files.indexOf(uci[0]);
-  const fromRank = 8 - parseInt(uci[1]);
-  const toFile = files.indexOf(uci[2]);
-  const toRank = 8 - parseInt(uci[3]);
+export function uciToMove(uci: string): { from: string, to: string } {
   return {
-    from: [fromRank, fromFile],
-    to: [toRank, toFile]
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4)
   };
 }
 
-export function moveToUci(from: [number, number], to: [number, number]): string {
+export function moveToUci(from: string, to: string): string {
+  return `${from}${to}`;
+}
+
+export function getSquareName(r: number, f: number): ChessSquare {
   const files = 'abcdefgh';
-  return `${files[from[1]]}${8 - from[0]}${files[to[1]]}${8 - to[0]}`;
+  return `${files[f]}${8 - r}` as ChessSquare;
+}
+
+export function getRankFile(square: string): [number, number] {
+  const files = 'abcdefgh';
+  const f = files.indexOf(square[0]);
+  const r = 8 - parseInt(square[1]);
+  return [r, f];
+}
+
+/** Converts chess.js board representation to our PieceType[][] for rendering */
+export function chessJsToBoard(game: Chess): PieceType[][] {
+  const board: PieceType[][] = Array(8).fill(null).map(() => Array(8).fill(null));
+  const internalBoard = game.board();
+
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const cell = internalBoard[r][f];
+      if (cell) {
+        // Upper case for white, lower case for black
+        board[r][f] = cell.color === 'w' ? cell.type.toUpperCase() as PieceType : cell.type.toLowerCase() as PieceType;
+      }
+    }
+  }
+  return board;
 }
 
 export const PIECE_ICONS: Record<string, string> = {

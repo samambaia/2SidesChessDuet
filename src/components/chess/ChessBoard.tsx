@@ -1,9 +1,10 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Chess, Square as ChessSquare } from 'chess.js';
 import { cn } from '@/lib/utils';
-import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, uciToMove, formatTotalTime, expandBoard, flattenBoard } from '@/lib/chess-utils';
+import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareName, getRankFile } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
@@ -22,8 +23,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  const [board, setBoard] = useState<PieceType[][]>(INITIAL_BOARD);
-  const [selected, setSelected] = useState<[number, number] | null>(null);
+  // Internal engine state
+  const game = useMemo(() => new Chess(), []);
+  
+  const [board, setBoard] = useState(chessJsToBoard(game));
+  const [selected, setSelected] = useState<ChessSquare | null>(null);
+  const [possibleMoves, setPossibleMoves] = useState<ChessSquare[]>([]);
   const [turn, setTurn] = useState<'w' | 'b'>('w');
   const [isThinking, setIsThinking] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -37,23 +42,31 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
+  // Sync with remote state
   useEffect(() => {
-    if (remoteGame?.board) {
-      setBoard(expandBoard(remoteGame.board));
-      setTurn(remoteGame.turn || 'w');
-      
-      if (remoteGame.startTime) {
-        const start = remoteGame.startTime.toDate ? remoteGame.startTime.toDate().getTime() : remoteGame.startTime;
-        const now = Date.now();
-        setElapsedSeconds(Math.floor((now - start) / 1000));
+    if (remoteGame?.fen) {
+      try {
+        game.load(remoteGame.fen);
+        setBoard(chessJsToBoard(game));
+        setTurn(game.turn());
+        
+        if (remoteGame.startTime) {
+          const start = remoteGame.startTime.toDate ? remoteGame.startTime.toDate().getTime() : remoteGame.startTime;
+          const now = Date.now();
+          setElapsedSeconds(Math.floor((now - start) / 1000));
+        }
+      } catch (e) {
+        console.error("Failed to load FEN:", remoteGame.fen);
       }
     } else if (!gameId) {
-      setBoard(INITIAL_BOARD);
+      game.load(INITIAL_FEN);
+      setBoard(chessJsToBoard(game));
       setTurn('w');
       setElapsedSeconds(0);
     }
-  }, [remoteGame, gameId]);
+  }, [remoteGame, gameId, game]);
 
+  // Game timer
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsedSeconds(prev => prev + 1);
@@ -61,65 +74,57 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return () => clearInterval(interval);
   }, []);
 
-  const triggerAiMove = useCallback(async (currentBoard: PieceType[][]) => {
+  const syncToFirestore = useCallback(async () => {
+    if (gameId && gameRef) {
+      await updateDoc(gameRef, {
+        fen: game.fen(),
+        turn: game.turn(),
+        moves: game.history(),
+        lastUpdated: serverTimestamp()
+      });
+    }
+  }, [gameId, gameRef, game]);
+
+  const triggerAiMove = useCallback(async () => {
+    if (game.isGameOver()) return;
     setIsThinking(true);
     try {
-      const fen = boardToFen(currentBoard, 'b');
+      const fen = game.fen();
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       
       const moveStr = aiResponse.move.trim().toLowerCase();
-      const uciMatch = moveStr.match(/[a-h][1-8][a-h][1-8][qrbn]?/);
+      const move = game.move(moveStr);
       
-      if (!uciMatch) throw new Error("Move format error from AI");
-
-      const uci = uciMatch[0];
-      const { from, to } = uciToMove(uci);
-      const [fromR, fromF] = from;
-      const [toR, toF] = to;
-
-      const nextBoard = currentBoard.map(row => [...row]);
-      nextBoard[toR][toF] = nextBoard[fromR][fromF];
-      nextBoard[fromR][fromF] = null;
-      
-      setBoard(nextBoard);
-      setTurn('w');
-      
-      if (gameId && gameRef) {
-        await updateDoc(gameRef, {
-          board: flattenBoard(nextBoard),
-          turn: 'w',
-          lastMove: uci,
-          moves: [...(remoteGame?.moves || []), uci]
-        });
+      if (move) {
+        setBoard(chessJsToBoard(game));
+        setTurn(game.turn());
+        await syncToFirestore();
       }
     } catch (error: any) {
       console.error("AI Move failed:", error);
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, gameId, gameRef, remoteGame?.moves]);
+  }, [difficulty, game, syncToFirestore]);
 
-  const executeMove = async (from: [number, number], to: [number, number]) => {
-    const [sr, sf] = from;
-    const [r, f] = to;
+  const executeMove = async (to: ChessSquare) => {
+    if (!selected) return;
 
-    if (sr === r && sf === f) {
-      setSelected(null);
-      return;
-    }
+    const from = selected;
+    const uci = `${from}${to}`;
 
-    const uci = moveToUci([sr, sf], [r, f]);
-
+    // Learning Mode AI validation
     if (mode === 'learning') {
       setIsThinking(true);
       try {
         const feedback = await getMoveFeedback({
-          currentBoardState: boardToFen(board, turn),
+          currentBoardState: game.fen(),
           userMove: uci
         });
         if (!feedback.isLegalMove) {
           toast({ title: "Movimento Inválido", description: feedback.feedback, variant: "destructive" });
           setSelected(null);
+          setPossibleMoves([]);
           return;
         }
       } catch (err) {
@@ -129,40 +134,56 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }
     }
 
-    const nextBoard = board.map(row => [...row]);
-    nextBoard[r][f] = nextBoard[sr][sf];
-    nextBoard[sr][sf] = null;
-    
-    const nextTurn = turn === 'w' ? 'b' : 'w';
+    // Try move in engine (handles rules, castling, promotion, etc)
+    try {
+      const move = game.move({ from, to, promotion: 'q' });
+      
+      if (!move) {
+        toast({ title: "Movimento Ilegal", description: "Esta jogada não segue as regras do xadrez.", variant: "destructive" });
+        return;
+      }
 
-    setBoard(nextBoard);
-    setSelected(null);
-    setTurn(nextTurn);
+      setBoard(chessJsToBoard(game));
+      setSelected(null);
+      setPossibleMoves([]);
+      setTurn(game.turn());
+      await syncToFirestore();
 
-    if (gameId && gameRef) {
-      updateDoc(gameRef, {
-        board: flattenBoard(nextBoard),
-        turn: nextTurn,
-        lastMove: uci,
-        moves: [...(remoteGame?.moves || []), uci]
-      }).catch(() => {});
-    }
+      if (game.isCheckmate()) {
+        toast({ title: "Fim de Jogo!", description: `Xeque-mate! ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.` });
+      } else if (game.isDraw()) {
+        toast({ title: "Empate!", description: "A partida terminou em empate." });
+      }
 
-    if (mode === 'ai' && nextTurn === 'b') {
-      setTimeout(() => triggerAiMove(nextBoard), 600);
+      // Trigger AI if applicable
+      if (mode === 'ai' && game.turn() === 'b' && !game.isGameOver()) {
+        setTimeout(triggerAiMove, 600);
+      }
+    } catch (e) {
+      toast({ title: "Erro no Movimento", description: "Não foi possível realizar esta jogada.", variant: "destructive" });
     }
   };
 
   const handleSquareClick = (r: number, f: number) => {
-    if (isThinking) return;
+    if (isThinking || game.isGameOver()) return;
 
-    if (selected) {
-      executeMove(selected, [r, f]);
+    const squareName = getSquareName(r, f);
+
+    // If a move destination is clicked
+    if (selected && possibleMoves.includes(squareName)) {
+      executeMove(squareName);
+      return;
+    }
+
+    // If selecting a piece
+    const piece = game.get(squareName);
+    if (piece && piece.color === game.turn()) {
+      setSelected(squareName);
+      const moves = game.moves({ square: squareName, verbose: true });
+      setPossibleMoves(moves.map(m => m.to));
     } else {
-      const piece = board[r][f];
-      if (piece && ((turn === 'w' && piece === piece.toUpperCase()) || (turn === 'b' && piece === piece.toLowerCase()))) {
-        setSelected([r, f]);
-      }
+      setSelected(null);
+      setPossibleMoves([]);
     }
   };
 
@@ -178,10 +199,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         throw new Error("Clipboard API not available");
       }
     } catch (err) {
-      console.warn("Failed to copy using API, falling back:", err);
       toast({ 
         title: "Copie o link manualmente", 
-        description: `O navegador bloqueou a cópia automática. Link: ${url}`,
+        description: `Link: ${url}`,
         variant: "default"
       });
     }
@@ -213,16 +233,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         )}
       </div>
 
-      {mode === 'pvp' && gameId && !hasCopied && (
-        <div className="w-full bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-          <Info className="w-4 h-4 text-blue-500 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-xs text-blue-700 font-medium">Jogo Online Ativo</p>
-            <p className="text-[10px] text-blue-600">Compartilhe o link da página para jogar com outra pessoa.</p>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center gap-4 mb-2">
         <div className={cn(
           "px-4 py-1 rounded-full text-xs font-bold transition-all border",
@@ -247,10 +257,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
              </div>
           </div>
         )}
+        
         {board.map((row, r) => 
           row.map((piece, f) => {
+            const squareName = getSquareName(r, f);
             const isLight = (r + f) % 2 === 0;
-            const isSelected = selected?.[0] === r && selected?.[1] === f;
+            const isSelected = selected === squareName;
+            const isPossible = possibleMoves.includes(squareName);
             
             return (
               <div
@@ -262,6 +275,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   isSelected && "highlight-selected"
                 )}
               >
+                {isPossible && (
+                  <div className={cn(
+                    "absolute z-20 rounded-full",
+                    piece ? "inset-0 border-4 border-primary/30" : "w-4 h-4 bg-primary/30"
+                  )} />
+                )}
                 {piece && (
                   <div
                     className={cn(
@@ -286,17 +305,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           variant="ghost" 
           size="sm" 
           className="text-xs text-muted-foreground gap-2 h-8 hover:bg-primary/5"
-          onClick={() => {
+          onClick={async () => {
             if (confirm("Deseja reiniciar a partida? Todo o progresso será perdido.")) {
-              const resetData = { 
-                board: flattenBoard(INITIAL_BOARD),
-                turn: 'w', 
-                moves: [], 
-                startTime: serverTimestamp() 
-              };
-              if (gameId && gameRef) updateDoc(gameRef, resetData);
-              else { setBoard(INITIAL_BOARD); setTurn('w'); setElapsedSeconds(0); }
+              game.load(INITIAL_FEN);
+              setBoard(chessJsToBoard(game));
+              setTurn('w');
+              setElapsedSeconds(0);
               setSelected(null);
+              setPossibleMoves([]);
+              await syncToFirestore();
             }
           }}
         >
