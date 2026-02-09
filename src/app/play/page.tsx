@@ -5,144 +5,99 @@ import React, { useState } from 'react';
 import { ChessBoard } from '@/components/chess/ChessBoard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Brain, Users, BookOpen, Clock, Settings, History } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { Brain, Users, BookOpen, Settings, Zap } from 'lucide-react';
+import Link from 'next/link';
 
 export default function PlayPage() {
   const [activeMode, setActiveMode] = useState<'ai' | 'pvp' | 'learning'>('ai');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="px-4 lg:px-6 h-16 flex items-center border-b bg-card sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <Brain className="h-6 w-6 text-primary" />
-          <span className="font-bold text-xl">ChessDuet</span>
-        </div>
-        <div className="ml-auto flex items-center gap-4">
-          <div className="hidden md:flex flex-col items-end mr-2">
-            <span className="text-sm font-semibold">Grandmaster Journey</span>
-            <div className="flex items-center gap-2">
-              <Progress value={45} className="h-2 w-24" />
-              <span className="text-xs text-muted-foreground">Level 12</span>
-            </div>
+    <div className="min-h-screen bg-accent/30">
+      <header className="px-6 h-16 flex items-center border-b bg-card shadow-sm sticky top-0 z-50">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="bg-primary p-1 rounded-lg">
+            <Zap className="h-5 w-5 text-primary-foreground" />
           </div>
-          <Button variant="ghost" size="icon"><History className="w-5 h-5" /></Button>
-          <Button variant="ghost" size="icon"><Settings className="w-5 h-5" /></Button>
-        </div>
+          <span className="font-bold text-xl tracking-tight">ChessDuet</span>
+        </Link>
       </header>
 
-      <main className="container mx-auto py-8 px-4 lg:px-6">
-        <div className="grid lg:grid-cols-[1fr_350px] gap-12 items-start">
+      <main className="container mx-auto py-12 px-4 max-w-6xl">
+        <div className="grid lg:grid-cols-[1fr_320px] gap-12 items-start">
           <div className="flex flex-col items-center">
             <ChessBoard mode={activeMode} difficulty={difficulty} />
           </div>
 
           <aside className="space-y-6">
-            <Card className="border-none shadow-xl bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  Game Controls
+            <Card className="border-none shadow-xl">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-primary" />
+                  Match Settings
                 </CardTitle>
-                <CardDescription>Configure your match settings</CardDescription>
+                <CardDescription>Select your game mode</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <Tabs defaultValue="ai" onValueChange={(v) => setActiveMode(v as any)}>
-                  <TabsList className="grid grid-cols-3 w-full mb-4">
-                    <TabsTrigger value="ai" className="flex items-center gap-1">
-                      <Brain className="w-3 h-3" />
-                      AI
-                    </TabsTrigger>
-                    <TabsTrigger value="pvp" className="flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      PvP
-                    </TabsTrigger>
-                    <TabsTrigger value="learning" className="flex items-center gap-1">
-                      <BookOpen className="w-3 h-3" />
-                      Learn
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="ai" className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Difficulty</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['easy', 'medium', 'hard'] as const).map((d) => (
-                          <Button
-                            key={d}
-                            variant={difficulty === d ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setDifficulty(d)}
-                            className="capitalize"
-                          >
-                            {d}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="pvp" className="space-y-4">
-                    <div className="bg-accent/50 p-4 rounded-lg space-y-3">
-                      <p className="text-sm">Create a private room to play with a friend.</p>
-                      <Button className="w-full">Create Private Room</Button>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="learning" className="space-y-4">
-                    <div className="bg-secondary/10 p-4 rounded-lg space-y-3 border border-secondary/20">
-                      <p className="text-sm font-medium text-secondary">Tutor Mode Enabled</p>
-                      <p className="text-xs text-muted-foreground">The AI will explain why moves are illegal and suggest better alternatives.</p>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-
-                <div className="pt-4 border-t">
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Timer</span>
-                    </div>
-                    <span className="font-mono text-xl font-bold">10:00</span>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">White (You)</span>
-                      <span className="font-mono">08:45</span>
-                    </div>
-                    <Progress value={87} className="h-1" />
-                    <div className="flex justify-between text-sm pt-2">
-                      <span className="text-muted-foreground">Black (AI)</span>
-                      <span className="font-mono">09:12</span>
-                    </div>
-                    <Progress value={92} className="h-1 bg-muted" />
-                  </div>
+                <div className="grid gap-2">
+                  <Button 
+                    variant={activeMode === 'ai' ? 'default' : 'outline'} 
+                    className="justify-start gap-3 h-12"
+                    onClick={() => setActiveMode('ai')}
+                  >
+                    <Brain className="w-4 h-4" />
+                    AI Opponent
+                  </Button>
+                  <Button 
+                    variant={activeMode === 'pvp' ? 'default' : 'outline'} 
+                    className="justify-start gap-3 h-12"
+                    onClick={() => setActiveMode('pvp')}
+                  >
+                    <Users className="w-4 h-4" />
+                    Local PvP
+                  </Button>
+                  <Button 
+                    variant={activeMode === 'learning' ? 'default' : 'outline'} 
+                    className="justify-start gap-3 h-12"
+                    onClick={() => setActiveMode('learning')}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    Learning Mode
+                  </Button>
                 </div>
+
+                {activeMode === 'ai' && (
+                  <div className="space-y-3 pt-4 border-t">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">AI Difficulty</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['easy', 'medium', 'hard'] as const).map((d) => (
+                        <Button
+                          key={d}
+                          variant={difficulty === d ? 'secondary' : 'ghost'}
+                          size="sm"
+                          onClick={() => setDifficulty(d)}
+                          className="capitalize text-xs"
+                        >
+                          {d}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeMode === 'learning' && (
+                  <div className="p-3 bg-secondary/10 rounded-lg border border-secondary/20 animate-in fade-in zoom-in-95">
+                    <p className="text-xs text-secondary-foreground leading-relaxed">
+                      <strong>Tutor Active:</strong> The AI will analyze your moves and explain rules if they are illegal.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
-
-            <Card className="border-none shadow-lg">
-              <CardHeader className="py-4">
-                <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground">Move History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                  {[
-                    { n: 1, w: "e4", b: "e5" },
-                    { n: 2, w: "Nf3", b: "Nc6" },
-                    { n: 3, w: "Bb5", b: "a6" },
-                  ].map((move, i) => (
-                    <div key={i} className="flex gap-4 text-sm items-center py-1 border-b border-muted last:border-0">
-                      <span className="w-8 text-muted-foreground">{move.n}.</span>
-                      <span className="font-medium flex-1">{move.w}</span>
-                      <span className="font-medium flex-1">{move.b}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            
+            <p className="text-center text-[10px] text-muted-foreground">
+              Tip: Drag pieces to move them or use tap-to-move.
+            </p>
           </aside>
         </div>
       </main>
