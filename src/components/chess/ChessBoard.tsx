@@ -1,62 +1,64 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci } from '@/lib/chess-utils';
+import { INITIAL_BOARD, PieceType, PIECE_ICONS, boardToFen, moveToUci, formatTotalTime } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore, useDoc, useUser, useMemoFirebase } from '@/firebase';
+import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
   mode: 'ai' | 'pvp' | 'learning';
-  onMove?: (uci: string) => void;
+  gameId?: string;
 }
 
-export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardProps) {
+export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
+  const { firestore } = useFirestore();
+  const { user } = useUser();
+  const { toast } = useToast();
+  
   const [board, setBoard] = useState<PieceType[][]>(INITIAL_BOARD);
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [turn, setTurn] = useState<'w' | 'b'>('w');
   const [isThinking, setIsThinking] = useState(false);
-  const [whiteTime, setWhiteTime] = useState(600); // 10 minutes
-  const [blackTime, setBlackTime] = useState(600);
-  const { toast } = useToast();
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [hasCopied, setHasCopied] = useState(false);
 
-  // Timer logic
+  // Firestore sync
+  const gameRef = useMemoFirebase(() => {
+    if (!firestore || !gameId) return null;
+    return doc(firestore, 'games', gameId);
+  }, [firestore, gameId]);
+
+  const { data: remoteGame } = useDoc(gameRef);
+
+  // Update local state when remote state changes
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (!isThinking) {
-      interval = setInterval(() => {
-        if (turn === 'w') {
-          setWhiteTime((prev) => Math.max(0, prev - 1));
-        } else {
-          setBlackTime((prev) => Math.max(0, prev - 1));
-        }
-      }, 1000);
+    if (remoteGame?.board) {
+      setBoard(remoteGame.board);
+      setTurn(remoteGame.turn || 'w');
+      
+      if (remoteGame.startTime) {
+        const start = remoteGame.startTime.toDate ? remoteGame.startTime.toDate().getTime() : remoteGame.startTime;
+        const now = Date.now();
+        setElapsedSeconds(Math.floor((now - start) / 1000));
+      }
     }
+  }, [remoteGame]);
 
+  // Total Game Timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedSeconds(prev => prev + 1);
+    }, 1000);
     return () => clearInterval(interval);
-  }, [turn, isThinking]);
-
-  // Handle time out
-  useEffect(() => {
-    if (whiteTime === 0) {
-      toast({ title: "Game Over", description: "White ran out of time! Black wins.", variant: "destructive" });
-    }
-    if (blackTime === 0) {
-      toast({ title: "Game Over", description: "Black ran out of time! White wins.", variant: "destructive" });
-    }
-  }, [whiteTime, blackTime, toast]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
   const executeMove = async (from: [number, number], to: [number, number]) => {
     const [sr, sf] = from;
@@ -95,14 +97,53 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
     const newBoard = board.map(row => [...row]);
     newBoard[r][f] = newBoard[sr][sf];
     newBoard[sr][sf] = null;
+    
+    const nextTurn = turn === 'w' ? 'b' : 'w';
+
+    // Local update for responsiveness
     setBoard(newBoard);
     setSelected(null);
-    const nextTurn = turn === 'w' ? 'b' : 'w';
     setTurn(nextTurn);
-    onMove?.(uci);
+
+    // Persist to Firestore if in pvp mode
+    if (gameId && gameRef) {
+      updateDoc(gameRef, {
+        board: newBoard,
+        turn: nextTurn,
+        lastMove: uci,
+        moves: [...(remoteGame?.moves || []), uci]
+      }).catch(err => {
+        console.error("Failed to sync move", err);
+      });
+    }
 
     if (mode === 'ai' && nextTurn === 'b') {
       triggerAiMove(newBoard);
+    }
+  };
+
+  const triggerAiMove = async (currentBoard: PieceType[][]) => {
+    setIsThinking(true);
+    try {
+      const fen = boardToFen(currentBoard, 'b');
+      const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
+      
+      const uci = aiResponse.move;
+      const files = 'abcdefgh';
+      const fromF = files.indexOf(uci[0]);
+      const fromR = 8 - parseInt(uci[1]);
+      const toF = files.indexOf(uci[2]);
+      const toR = 8 - parseInt(uci[3]);
+
+      const newBoard = currentBoard.map(row => [...row]);
+      newBoard[toR][toF] = newBoard[fromR][fromF];
+      newBoard[fromR][fromF] = null;
+      
+      setBoard(newBoard);
+      setTurn('w');
+      setIsThinking(false);
+    } catch (error) {
+      setIsThinking(false);
     }
   };
 
@@ -145,75 +186,63 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
     executeMove(selected, [r, f]);
   };
 
-  const triggerAiMove = async (currentBoard: PieceType[][]) => {
-    setIsThinking(true);
-    try {
-      const fen = boardToFen(currentBoard, 'b');
-      const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
-      
-      const uci = aiResponse.move;
-      const files = 'abcdefgh';
-      const fromF = files.indexOf(uci[0]);
-      const fromR = 8 - parseInt(uci[1]);
-      const toF = files.indexOf(uci[2]);
-      const toR = 8 - parseInt(uci[3]);
-
-      const newBoard = currentBoard.map(row => [...row]);
-      newBoard[toR][toF] = newBoard[fromR][fromF];
-      newBoard[fromR][fromF] = null;
-      
-      setTimeout(() => {
-        setBoard(newBoard);
-        setTurn('w');
-        setIsThinking(false);
-      }, 600);
-    } catch (error) {
-      setIsThinking(false);
-    }
+  const copyInviteLink = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url);
+    setHasCopied(true);
+    toast({ title: "Link Copied!", description: "Send this link to your daughter to join the game." });
+    setTimeout(() => setHasCopied(false), 2000);
   };
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px]">
-      <div className="grid grid-cols-2 w-full gap-4 mb-2">
-        {/* Black Timer */}
-        <div className={cn(
-          "flex items-center justify-between px-4 py-2 rounded-xl border-2 transition-all",
-          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-lg scale-105" : "bg-accent/30 border-transparent opacity-60"
-        )}>
-          <div className="flex items-center gap-2">
-            <div className={cn("w-2 h-2 rounded-full", turn === 'b' ? "bg-primary animate-pulse" : "bg-muted")} />
-            <span className="text-xs font-bold uppercase tracking-wider">Black</span>
+      <div className="w-full flex items-center justify-between px-4 py-3 bg-accent/20 rounded-2xl border border-accent/30 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 p-2 rounded-full">
+            <Timer className="w-5 h-5 text-primary" />
           </div>
-          <div className="flex items-center gap-2 font-mono text-lg">
-            <Timer className="w-4 h-4" />
-            {formatTime(blackTime)}
+          <div>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total Time</p>
+            <p className="text-xl font-mono font-bold">{formatTotalTime(elapsedSeconds)}</p>
           </div>
         </div>
 
-        {/* White Timer */}
+        {gameId && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="rounded-full gap-2 border-primary/20 hover:bg-primary/5"
+            onClick={copyInviteLink}
+          >
+            {hasCopied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+            {hasCopied ? "Copied" : "Share Room"}
+          </Button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-4 mb-2">
         <div className={cn(
-          "flex items-center justify-between px-4 py-2 rounded-xl border-2 transition-all",
-          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-lg scale-105" : "bg-accent/30 border-transparent opacity-60"
+          "px-4 py-1 rounded-full text-xs font-bold transition-all border",
+          turn === 'w' ? "bg-white text-black border-primary shadow-md scale-110" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
         )}>
-          <div className="flex items-center gap-2">
-            <div className={cn("w-2 h-2 rounded-full", turn === 'w' ? "bg-primary animate-pulse" : "bg-muted")} />
-            <span className="text-xs font-bold uppercase tracking-wider">White</span>
-          </div>
-          <div className="flex items-center gap-2 font-mono text-lg">
-            <Timer className="w-4 h-4" />
-            {formatTime(whiteTime)}
-          </div>
+          WHITE'S TURN
+        </div>
+        <div className={cn(
+          "px-4 py-1 rounded-full text-xs font-bold transition-all border",
+          turn === 'b' ? "bg-black text-white border-primary shadow-md scale-110" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
+        )}>
+          BLACK'S TURN
         </div>
       </div>
 
       {isThinking && (
-        <div className="flex items-center gap-2 text-primary animate-bounce mb-2">
+        <div className="flex items-center gap-2 text-primary animate-pulse mb-2">
           <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-xs font-bold uppercase tracking-tighter">AI is pondering...</span>
+          <span className="text-xs font-bold uppercase">AI Thinking...</span>
         </div>
       )}
 
-      <div className="chess-board border-4 border-primary/20 rounded-xl overflow-hidden shadow-2xl">
+      <div className="chess-board border-4 border-primary/20 rounded-2xl overflow-hidden shadow-2xl bg-white/50 backdrop-blur-sm">
         {board.map((row, r) => 
           row.map((piece, f) => {
             const isLight = (r + f) % 2 === 0;
@@ -238,7 +267,7 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
                     className={cn(
                       "chess-piece text-4xl sm:text-6xl flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform",
                       isSelected && "scale-110",
-                      piece === piece.toUpperCase() ? "text-slate-900" : "text-white drop-shadow"
+                      piece === piece.toUpperCase() ? "text-slate-900" : "text-white drop-shadow-lg"
                     )}
                   >
                     {PIECE_ICONS[piece]}
@@ -250,21 +279,31 @@ export function ChessBoard({ difficulty = 'medium', mode, onMove }: ChessBoardPr
         )}
       </div>
 
-      <Button 
-        variant="ghost" 
-        size="sm" 
-        className="text-xs text-muted-foreground gap-2 h-8"
-        onClick={() => {
-          setBoard(INITIAL_BOARD);
-          setTurn('w');
-          setSelected(null);
-          setWhiteTime(600);
-          setBlackTime(600);
-        }}
-      >
-        <RotateCcw className="w-3 h-3" />
-        Reset Match
-      </Button>
+      <div className="flex gap-4">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="text-xs text-muted-foreground gap-2 h-8 hover:bg-primary/5"
+          onClick={() => {
+            const resetData = {
+              board: INITIAL_BOARD,
+              turn: 'w',
+              moves: [],
+              startTime: serverTimestamp()
+            };
+            if (gameId && gameRef) {
+              updateDoc(gameRef, resetData);
+            } else {
+              setBoard(INITIAL_BOARD);
+              setTurn('w');
+              setElapsedSeconds(0);
+            }
+          }}
+        >
+          <RotateCcw className="w-3 h-3" />
+          Reset Board
+        </Button>
+      </div>
     </div>
   );
 }

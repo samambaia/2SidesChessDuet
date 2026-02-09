@@ -1,5 +1,5 @@
 
-export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | null;
+export type PieceType = 'p' | 'n' | 'b' | 'q' | 'k' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | null;
 export type Square = {
   rank: number;
   file: number;
@@ -42,6 +42,21 @@ export function boardToFen(board: PieceType[][], activeColor: 'w' | 'b' = 'w'): 
   }
   fen += ` ${activeColor} KQkq - 0 1`;
   return fen;
+}
+
+export function formatTotalTime(seconds: number): string {
+  const days = Math.floor(seconds / (24 * 3600));
+  const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${secs}s`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
 export function uciToMove(uci: string): { from: [number, number], to: [number, number] } {
