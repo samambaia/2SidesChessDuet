@@ -3,21 +3,21 @@
   "placeholderImages": [
     {
       "id": "hero-chess",
-      "description": "A professional chess board set in a modern room",
-      "imageUrl": "https://picsum.photos/seed/chess1/1200/800",
-      "imageHint": "chess board"
+      "description": "A professional competition chess set with focus on the king",
+      "imageUrl": "https://picsum.photos/seed/chess-competition/1200/800",
+      "imageHint": "chess piece"
     },
     {
       "id": "ai-feature",
       "description": "Abstract representation of artificial intelligence",
-      "imageUrl": "https://picsum.photos/seed/ai/600/400",
+      "imageUrl": "https://picsum.photos/seed/ai-brain/600/400",
       "imageHint": "artificial intelligence"
     },
     {
       "id": "social-play",
-      "description": "People playing games together online",
-      "imageUrl": "https://picsum.photos/seed/social/600/400",
-      "imageHint": "online gaming"
+      "description": "Minimalist icon of people playing chess",
+      "imageUrl": "https://picsum.photos/seed/chess-social/600/400",
+      "imageHint": "chess players"
     }
   ]
 }
