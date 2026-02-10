@@ -33,7 +33,6 @@ export default function PlayPage() {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Garantir que o usuário esteja autenticado anonimamente se não estiver logado
   useEffect(() => {
     if (auth && !auth.currentUser) {
       signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
@@ -43,7 +42,7 @@ export default function PlayPage() {
   const createRoom = async () => {
     setIsCreating(true);
     try {
-      if (!auth || !firestore) throw new Error("Serviços do Firebase não inicializados.");
+      if (!auth || !firestore) throw new Error("Serviços não prontos.");
 
       let currentUser = auth.currentUser;
       if (!currentUser) {
@@ -54,7 +53,7 @@ export default function PlayPage() {
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
       
-      // Corrigido: Usamos 'fen' em vez de arrays aninhados para evitar erros do Firestore
+      // Salvando como FEN (string simples) para evitar erro de "Nested arrays"
       await setDoc(gameRef, {
         id: newRoomId,
         fen: INITIAL_FEN,
@@ -65,12 +64,13 @@ export default function PlayPage() {
         player2Id: null,
         mode: 'pvp',
         totalTime: 0,
-        gameRoomId: newRoomId
+        gameRoomId: newRoomId,
+        lastUpdated: serverTimestamp()
       });
 
       router.push(`/play?room=${newRoomId}`);
       setActiveMode('pvp');
-      toast({ title: "Sala Criada!", description: "Compartilhe o link para começar." });
+      toast({ title: "Sucesso!", description: "Nova sala online criada." });
     } catch (error: any) {
       console.error("Erro ao criar sala:", error);
       toast({ 
@@ -92,84 +92,62 @@ export default function PlayPage() {
           <span className="font-bold text-xl">ChessDuet</span>
         </Link>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2 rounded-full shadow-sm">
+              <Button variant="outline" size="sm" className="gap-2 rounded-full">
                 <Settings className="w-4 h-4" />
-                Game Settings
+                Configurações
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] rounded-3xl p-8">
+            <DialogContent className="sm:max-w-[425px] rounded-[2rem] p-8">
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold mb-2">Configuração da Partida</DialogTitle>
-                <DialogDescription className="text-muted-foreground text-sm">
-                  Escolha o seu modo de jogo preferido e ajuste a dificuldade.
+                <DialogTitle className="text-2xl font-bold">Modo de Jogo</DialogTitle>
+                <DialogDescription>
+                  Escolha como deseja jogar hoje.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-6 mt-4">
                 <div className="space-y-4">
-                  <h4 className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">MODO DE JOGO</h4>
+                  <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">MODO DE JOGO</h4>
                   <div className="grid grid-cols-1 gap-3">
                     <Button 
                       variant={activeMode === 'ai' ? 'default' : 'outline'} 
-                      className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
-                      onClick={() => {
-                        setActiveMode('ai');
-                        if (roomFromUrl) router.push('/play');
-                      }}
+                      className="justify-start gap-4 h-16 rounded-2xl px-6"
+                      onClick={() => { setActiveMode('ai'); if (roomFromUrl) router.push('/play'); }}
                     >
                       <Brain className="w-6 h-6 shrink-0" />
                       <div className="text-left">
-                        <div className="font-bold text-base leading-tight">Contra IA</div>
-                        <div className="text-[11px] opacity-70 font-medium">Desafie o Gemini</div>
+                        <div className="font-bold">Contra IA</div>
+                        <div className="text-[10px] opacity-70">Desafie o computador</div>
                       </div>
                     </Button>
                     
-                    <div className="space-y-2">
-                      <Button 
-                        variant={activeMode === 'pvp' ? 'default' : 'outline'} 
-                        className="w-full justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
-                        disabled={isCreating}
-                        onClick={() => {
-                          if (roomFromUrl) {
-                            setActiveMode('pvp');
-                          } else {
-                            createRoom();
-                          }
-                        }}
-                      >
-                        {isCreating ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <Users className="w-6 h-6 shrink-0" />}
-                        <div className="text-left">
-                          <div className="font-bold text-base leading-tight">Online PvP</div>
-                          <div className="text-[11px] opacity-70 font-medium">Jogue com amigos</div>
-                        </div>
-                      </Button>
-                      {!roomFromUrl && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="w-full text-[10px] font-bold uppercase tracking-wider"
-                          onClick={createRoom}
-                          disabled={isCreating}
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> Criar Nova Sala Online
-                        </Button>
-                      )}
-                    </div>
+                    <Button 
+                      variant={activeMode === 'pvp' ? 'default' : 'outline'} 
+                      className="justify-start gap-4 h-16 rounded-2xl px-6"
+                      disabled={isCreating}
+                      onClick={() => {
+                        if (roomFromUrl) setActiveMode('pvp');
+                        else createRoom();
+                      }}
+                    >
+                      {isCreating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Users className="w-6 h-6 shrink-0" />}
+                      <div className="text-left">
+                        <div className="font-bold">Online PvP</div>
+                        <div className="text-[10px] opacity-70">Jogue com amigos</div>
+                      </div>
+                    </Button>
 
                     <Button 
                       variant={activeMode === 'learning' ? 'default' : 'outline'} 
-                      className="justify-start gap-4 h-16 rounded-2xl px-6 border-muted/20"
-                      onClick={() => {
-                        setActiveMode('learning');
-                        if (roomFromUrl) router.push('/play');
-                      }}
+                      className="justify-start gap-4 h-16 rounded-2xl px-6"
+                      onClick={() => { setActiveMode('learning'); if (roomFromUrl) router.push('/play'); }}
                     >
                       <BookOpen className="w-6 h-6 shrink-0" />
                       <div className="text-left">
-                        <div className="font-bold text-base leading-tight">Modo Aprendizado</div>
-                        <div className="text-[11px] opacity-70 font-medium">Feedback em tempo real</div>
+                        <div className="font-bold">Modo Aprendizado</div>
+                        <div className="text-[10px] opacity-70">Feedback em tempo real</div>
                       </div>
                     </Button>
                   </div>
@@ -177,14 +155,14 @@ export default function PlayPage() {
 
                 {activeMode === 'ai' && (
                   <div className="space-y-4 pt-4 border-t">
-                    <h4 className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Dificuldade da IA</h4>
+                    <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">DIFICULDADE</h4>
                     <div className="grid grid-cols-3 gap-2">
                       {(['easy', 'medium', 'hard'] as const).map((d) => (
                         <Button
                           key={d}
                           variant={difficulty === d ? 'secondary' : 'outline'}
                           onClick={() => setDifficulty(d)}
-                          className="capitalize h-11 rounded-xl font-bold text-xs"
+                          className="capitalize rounded-xl text-xs h-10"
                         >
                           {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Médio' : 'Difícil'}
                         </Button>
@@ -199,19 +177,15 @@ export default function PlayPage() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-[600px]">
-          <ChessBoard 
-            mode={activeMode} 
-            difficulty={difficulty} 
-            gameId={roomFromUrl || undefined}
-          />
-        </div>
-        <div className="mt-8 text-center space-y-1">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">
-            Status da Partida
-          </p>
+        <ChessBoard 
+          mode={activeMode} 
+          difficulty={difficulty} 
+          gameId={roomFromUrl || undefined}
+        />
+        <div className="mt-8 text-center">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Status</p>
           <p className="text-sm font-medium">
-            {roomFromUrl ? `Sala Online: ${roomFromUrl}` : activeMode === 'ai' ? `Jogando contra IA (${difficulty === 'easy' ? 'Fácil' : difficulty === 'medium' ? 'Médio' : 'Difícil'})` : activeMode === 'learning' ? 'Modo Aprendizado' : 'Escolha um modo de jogo'}
+            {roomFromUrl ? `Partida Online: ${roomFromUrl}` : activeMode === 'ai' ? 'Jogando contra IA' : 'Modo Aprendizado'}
           </p>
         </div>
       </main>

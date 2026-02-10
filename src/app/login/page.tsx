@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Zap, Github, Chrome, Loader2 } from 'lucide-react';
+import { Zap, Github, Chrome, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/firebase';
 import { 
   signInWithPopup, 
@@ -19,6 +19,7 @@ import {
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -26,6 +27,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
   
   const auth = useAuth();
   const router = useRouter();
@@ -34,26 +36,30 @@ export default function LoginPage() {
   const handleSocialLogin = async (providerName: 'google' | 'github') => {
     if (!auth) return;
     setIsLoading(true);
+    setConfigError(null);
+
     const provider = providerName === 'google' ? new GoogleAuthProvider() : new GithubAuthProvider();
+    
     try {
       await signInWithPopup(auth, provider);
       toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       router.push('/');
     } catch (error: any) {
       console.error("Login error:", error);
-      let errorMessage = "Não foi possível realizar a autenticação social.";
+      let errorMessage = "Não foi possível realizar a autenticação.";
       
-      // Detalhando o erro para ajudar o usuário a configurar o Firebase
       if (error.code === 'auth/operation-not-allowed') {
-        errorMessage = `O provedor ${providerName} não está habilitado no Console do Firebase (Auth > Sign-in method).`;
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = "A janela de login foi fechada antes da conclusão.";
+        errorMessage = `O provedor ${providerName} não está habilitado no Console do Firebase. Vá em Auth > Sign-in method e ative-o.`;
+        setConfigError(errorMessage);
       } else if (error.code === 'auth/unauthorized-domain') {
-        errorMessage = "Este domínio não está autorizado no Console do Firebase (Auth > Settings > Authorized Domains).";
+        errorMessage = "Este domínio não está autorizado no Console do Firebase. Vá em Auth > Settings > Authorized Domains e adicione este endereço.";
+        setConfigError(errorMessage);
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = "A janela de login foi fechada.";
       }
       
       toast({ 
-        title: "Erro na Autenticação", 
+        title: "Erro de Configuração", 
         description: errorMessage,
         variant: "destructive"
       });
@@ -67,32 +73,25 @@ export default function LoginPage() {
     if (!auth || !email || !password) return;
     
     setIsLoading(true);
+    setConfigError(null);
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
-        toast({ title: "Bem-vindo de volta!", description: "Login realizado com sucesso." });
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         if (name) {
           await updateProfile(userCredential.user, { displayName: name });
         }
-        toast({ title: "Conta criada!", description: "Seja bem-vindo ao ChessDuet." });
       }
       router.push('/');
     } catch (error: any) {
-      console.error("Email auth error:", error);
-      let description = "Ocorreu um erro ao tentar autenticar.";
-      
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        description = "E-mail ou senha inválidos.";
-      } else if (error.code === 'auth/email-already-in-use') {
-        description = "Este e-mail já está sendo utilizado.";
-      } else if (error.code === 'auth/weak-password') {
-        description = "A senha deve ter pelo menos 6 caracteres.";
-      }
+      let description = "Erro ao autenticar. Verifique seus dados.";
+      if (error.code === 'auth/email-already-in-use') description = "Este e-mail já está em uso.";
+      if (error.code === 'auth/weak-password') description = "A senha deve ter 6+ caracteres.";
+      if (error.code === 'auth/invalid-credential') description = "E-mail ou senha incorretos.";
 
       toast({ 
-        title: "Erro na Autenticação", 
+        title: "Erro", 
         description,
         variant: "destructive"
       });
@@ -102,31 +101,36 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-accent/30 px-4">
-      <div className="w-full max-w-md space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-accent/30 px-4 py-12">
+      <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <Link href="/" className="inline-flex items-center gap-2 mb-4">
+          <Link href="/" className="inline-flex items-center gap-2 mb-2">
             <div className="bg-primary p-2 rounded-xl">
               <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
             <span className="text-3xl font-bold tracking-tight">ChessDuet</span>
           </Link>
-          <h2 className="text-2xl font-bold tracking-tight">
+          <h2 className="text-2xl font-bold">
             {isLogin ? "Bem-vindo de volta" : "Crie sua conta"}
           </h2>
-          <p className="text-muted-foreground">
-            {isLogin 
-              ? "Entre com suas credenciais para acessar seus jogos" 
-              : "Junte-se à comunidade e comece a dominar o xadrez"}
-          </p>
         </div>
 
-        <Card className="border-none shadow-2xl">
+        {configError && (
+          <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-2xl">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Atenção (Configuração Necessária)</AlertTitle>
+            <AlertDescription className="text-xs">
+              {configError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Card className="border-none shadow-2xl rounded-[2rem] overflow-hidden">
           <CardHeader className="space-y-4 pt-8">
             <div className="grid grid-cols-2 gap-4">
               <Button 
                 variant="outline" 
-                className="w-full" 
+                className="w-full rounded-xl h-12" 
                 onClick={() => handleSocialLogin('github')}
                 disabled={isLoading}
               >
@@ -135,7 +139,7 @@ export default function LoginPage() {
               </Button>
               <Button 
                 variant="outline" 
-                className="w-full" 
+                className="w-full rounded-xl h-12" 
                 onClick={() => handleSocialLogin('google')}
                 disabled={isLoading}
               >
@@ -148,7 +152,7 @@ export default function LoginPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Ou continue com e-mail</span>
+                <span className="bg-card px-4 text-muted-foreground">Ou e-mail</span>
               </div>
             </div>
           </CardHeader>
@@ -159,10 +163,10 @@ export default function LoginPage() {
                   <Label htmlFor="name">Nome Completo</Label>
                   <Input 
                     id="name" 
-                    placeholder="Magnus Carlsen" 
+                    placeholder="Seu nome" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    required={!isLogin}
+                    className="rounded-xl h-11"
                   />
                 </div>
               )}
@@ -171,60 +175,39 @@ export default function LoginPage() {
                 <Input 
                   id="email" 
                   type="email" 
-                  placeholder="m.carlsen@chess.com" 
+                  placeholder="exemplo@email.com" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="rounded-xl h-11"
                   required
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Senha</Label>
-                  {isLogin && (
-                    <Link href="#" className="text-xs text-primary hover:underline">
-                      Esqueceu a senha?
-                    </Link>
-                  )}
-                </div>
+                <Label htmlFor="password">Senha</Label>
                 <Input 
                   id="password" 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="rounded-xl h-11"
                   required
                 />
               </div>
             </CardContent>
             <CardFooter className="flex flex-col gap-4 pb-8">
-              <Button type="submit" className="w-full h-11 text-lg rounded-xl" disabled={isLoading}>
-                {isLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  isLogin ? "Entrar" : "Criar Conta"
-                )}
+              <Button type="submit" className="w-full h-12 text-lg rounded-xl" disabled={isLoading}>
+                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : (isLogin ? "Entrar" : "Cadastrar")}
               </Button>
-              <div className="text-center text-sm">
-                <span className="text-muted-foreground">
-                  {isLogin ? "Não tem uma conta?" : "Já tem uma conta?"}
-                </span>{" "}
-                <button 
-                  type="button"
-                  onClick={() => setIsLogin(!isLogin)}
-                  className="text-primary font-semibold hover:underline"
-                >
-                  {isLogin ? "Cadastre-se" : "Entrar"}
-                </button>
-              </div>
+              <button 
+                type="button"
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-sm text-primary font-semibold hover:underline"
+              >
+                {isLogin ? "Não tem conta? Cadastre-se" : "Já tem conta? Faça login"}
+              </button>
             </CardFooter>
           </form>
         </Card>
-
-        <p className="text-center text-xs text-muted-foreground px-8">
-          Ao continuar, você concorda com nossos{" "}
-          <Link href="#" className="underline underline-offset-4 hover:text-primary">Termos de Serviço</Link>{" "}
-          e{" "}
-          <Link href="#" className="underline underline-offset-4 hover:text-primary">Política de Privacidade</Link>.
-        </p>
       </div>
     </div>
   );
