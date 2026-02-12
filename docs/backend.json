@@ -5,20 +5,20 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Represents a user of the ChessDuet application.",
+      "description": "Representa um usuário do ChessDuet.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the user.",
+          "description": "ID único do usuário (UID do Firebase).",
           "format": "uuid"
         },
         "username": {
           "type": "string",
-          "description": "The username of the user."
+          "description": "Nome de exibição."
         },
         "email": {
           "type": "string",
-          "description": "The email address of the user.",
+          "description": "E-mail do usuário.",
           "format": "email"
         }
       },
@@ -32,55 +32,42 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Game",
       "type": "object",
-      "description": "Represents a chess game played between two players.",
+      "description": "Representa uma partida de xadrez.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the game."
-        },
-        "gameRoomId": {
-          "type": "string",
-          "description": "Reference to GameRoom. ID of the game room where the game is being played."
+          "description": "ID único da partida."
         },
         "fen": {
           "type": "string",
-          "description": "The current board state in Forsyth–Edwards Notation (FEN)."
+          "description": "Estado do tabuleiro em notação FEN."
         },
-        "startTime": {
+        "turn": {
           "type": "string",
-          "description": "The date and time the game started.",
-          "format": "date-time"
-        },
-        "endTime": {
-          "type": "string",
-          "description": "The date and time the game ended.",
-          "format": "date-time"
+          "description": "Vez de quem jogar ('w' ou 'b')."
         },
         "player1Id": {
           "type": "string",
-          "description": "ID of the white player."
+          "description": "UID do jogador das brancas."
         },
         "player2Id": {
           "type": "string",
-          "description": "ID of the black player."
+          "description": "UID do jogador das pretas (nulo se aguardando)."
         },
-        "moves": {
-          "type": "array",
-          "description": "Array of chess moves in algebraic notation.",
-          "items": {
-            "type": "string"
-          }
+        "mode": {
+          "type": "string",
+          "description": "Modo de jogo: 'ai', 'pvp' ou 'learning'."
         },
-        "totalTime": {
-          "type": "number",
-          "description": "Total elapsed time of the game in seconds."
+        "lastUpdated": {
+          "type": "string",
+          "description": "Data da última jogada.",
+          "format": "date-time"
         }
       },
       "required": [
         "id",
         "fen",
-        "player1Id",
-        "startTime"
+        "player1Id"
       ]
     }
   },
@@ -101,7 +88,7 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profile information."
+          "description": "Perfis de usuário."
         }
       },
       {
@@ -111,7 +98,7 @@
           "schema": {
             "$ref": "#/backend/entities/Game"
           },
-          "description": "Stores game data, including moves and players."
+          "description": "Dados das partidas em tempo real."
         }
       }
     ]

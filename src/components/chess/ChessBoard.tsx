@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, serverTimestamp } from 'firebase/firestore';
+import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import {
   Dialog,
   DialogContent,
@@ -53,25 +54,27 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
+  // Auto-join logic for Player 2
   useEffect(() => {
     if (remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
-      updateDoc(gameRef!, {
+      updateDocumentNonBlocking(gameRef!, {
         player2Id: user.uid,
         lastUpdated: serverTimestamp()
-      }).catch(err => console.error("Erro ao entrar na sala:", err));
+      });
     }
   }, [remoteGame, user, gameRef]);
 
+  // Sync remote state to local chess.js instance
   useEffect(() => {
     if (remoteGame?.fen) {
-      try {
-        if (remoteGame.fen !== game.fen()) {
+      if (remoteGame.fen !== game.fen()) {
+        try {
           game.load(remoteGame.fen);
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
+        } catch (e) {
+          // Silent catch for sync discrepancies
         }
-      } catch (e) {
-        console.error("Falha ao carregar FEN remoto:", remoteGame.fen);
       }
     } else if (!gameId) {
       game.load(INITIAL_FEN);
@@ -80,22 +83,23 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, gameId, game]);
 
+  // Timer logic
   useEffect(() => {
     if (game.isGameOver()) return;
     const interval = setInterval(() => {
       setElapsedSeconds(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [game.isGameOver()]);
+  }, [game]);
 
-  const syncToFirestore = useCallback(async () => {
+  const syncToFirestore = useCallback(() => {
     if (gameId && gameRef) {
-      updateDoc(gameRef, {
+      updateDocumentNonBlocking(gameRef, {
         fen: game.fen(),
         turn: game.turn(),
         moves: game.history(),
         lastUpdated: serverTimestamp()
-      }).catch(err => console.error("Erro de sincronização:", err));
+      });
     }
   }, [gameId, gameRef, game]);
 
@@ -110,10 +114,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       if (move) {
         setBoard(chessJsToBoard(game));
         setTurn(game.turn());
-        await syncToFirestore();
+        syncToFirestore();
       }
     } catch (error: any) {
-      console.error("Movimento da IA falhou:", error);
+      // IA failed to respond or move was invalid
     } finally {
       setIsThinking(false);
     }
@@ -136,7 +140,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           return;
         }
       } catch (err) {
-        console.error("Erro no feedback da IA:", err);
+        // Feedback service error
       } finally {
         setIsThinking(false);
       }
@@ -150,19 +154,18 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setSelected(null);
       setPossibleMoves([]);
       setTurn(game.turn());
-      await syncToFirestore();
+      syncToFirestore();
 
       if (game.isGameOver()) {
-        if (game.isCheckmate()) {
-          toast({ title: "Xeque-mate!", description: `As ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.` });
-        } else {
-          toast({ title: "Empate!", description: "A partida terminou empatada." });
-        }
+        const winMessage = game.isCheckmate() 
+          ? `Xeque-mate! As ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.`
+          : "A partida terminou empatada.";
+        toast({ title: "Fim de Jogo", description: winMessage });
       } else if (mode === 'ai' && game.turn() === 'b') {
         setTimeout(triggerAiMove, 600);
       }
     } catch (e) {
-      toast({ title: "Erro", description: "Movimento inválido.", variant: "destructive" });
+      toast({ title: "Ops!", description: "Esse movimento não é permitido pelas regras.", variant: "destructive" });
     }
   };
 
@@ -184,6 +187,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
+  // Drag and Drop Logic
   const handleDragStart = (e: React.DragEvent, square: ChessSquare) => {
     if (isThinking || game.isGameOver()) {
       e.preventDefault();
@@ -201,9 +205,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
 
   const handleDrop = (e: React.DragEvent, toSquare: ChessSquare) => {
     e.preventDefault();
@@ -217,10 +219,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setIsAnalyzing(true);
     try {
       const historyStr = game.history().join(', ');
-      const result = await analyzeGameHistory({ gameHistory: historyStr || "Partida curta." });
+      const result = await analyzeGameHistory({ gameHistory: historyStr || "Partida muito rápida para análise." });
       setAnalysis(result);
     } catch (err) {
-      toast({ title: "Erro na Análise", variant: "destructive" });
+      toast({ title: "Análise Indisponível", description: "O professor de IA está ocupado no momento.", variant: "destructive" });
     } finally {
       setIsAnalyzing(false);
     }
@@ -232,11 +234,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'ChessDuet - Vamos jogar!',
-          text: 'Entre na minha sala de xadrez para uma partida!',
+          title: 'ChessDuet - Desafio Aceito?',
+          text: 'Entre na minha sala de xadrez para jogarmos uma partida!',
           url: publicUrl,
         });
-        toast({ title: "Enviado!", description: "Convite compartilhado com sucesso." });
       } catch (err) {
         copyToClipboard(publicUrl);
       }
@@ -249,10 +250,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       await navigator.clipboard.writeText(text);
       setHasCopied(true);
-      toast({ title: "Link Copiado!", description: "O link foi copiado para sua área de transferência." });
+      toast({ title: "Link Copiado!", description: "Agora é só colar no WhatsApp da sua filha!" });
       setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {
-      toast({ title: "Link do Jogo:", description: text });
+      toast({ title: "Link da Sala:", description: text });
     }
   };
 
@@ -262,12 +263,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 animate-in fade-in slide-in-from-top-4 duration-500">
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Status da Publicação
-            <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700 border-yellow-200">Em progresso</Badge>
+            Status do Site
+            <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700 border-yellow-200">Aguardando Publish</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Certifique-se de que o botão <strong>Publish</strong> no topo do editor finalizou. 
-            O site público só estará visível após a conclusão desse processo.
+            Se o link der erro, verifique se o botão <strong>Publish</strong> no topo terminou. O site público só funciona após a conclusão.
           </AlertDescription>
         </Alert>
       )}
@@ -278,7 +278,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Timer className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Tempo</p>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Duração</p>
             <p className="text-xl font-mono font-bold">{formatTotalTime(elapsedSeconds)}</p>
           </div>
         </div>
@@ -318,7 +318,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-50 flex items-center justify-center rounded-lg">
              <div className="bg-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span className="text-xs font-bold uppercase text-primary">IA Pensando...</span>
+                <span className="text-xs font-bold uppercase text-primary">Processando...</span>
              </div>
           </div>
         )}
@@ -372,7 +372,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <div className="flex flex-col gap-2 p-6 bg-primary/5 border border-primary/10 rounded-3xl text-center animate-in zoom-in-95 duration-300">
             <p className="font-bold text-primary flex items-center justify-center gap-2">
               <Award className="w-5 h-5" />
-              Fim de Partida!
+              Partida Finalizada!
             </p>
             <Button 
               className="mt-2 rounded-xl gap-2 h-12 shadow-lg shadow-primary/20"
@@ -380,7 +380,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               disabled={isAnalyzing}
             >
               {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
-              {isAnalyzing ? "Analisando..." : "Analisar Minha Performance"}
+              {isAnalyzing ? "Analisando..." : "Ver Feedback da IA"}
             </Button>
           </div>
         )}
@@ -391,7 +391,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             size="sm" 
             className="text-xs text-muted-foreground gap-2 h-8"
             onClick={() => {
-              if (confirm("Deseja reiniciar a partida?")) {
+              if (confirm("Deseja reiniciar a partida atual?")) {
                 game.load(INITIAL_FEN);
                 setBoard(chessJsToBoard(game));
                 setTurn('w');
@@ -403,7 +403,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             }}
           >
             <RotateCcw className="w-3 h-3" />
-            Reiniciar
+            Reiniciar Jogo
           </Button>
         </div>
       </div>
@@ -413,21 +413,21 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-2xl">
               <Activity className="w-6 h-6 text-primary" />
-              Análise do Professor IA
+              Análise do Professor
             </DialogTitle>
-            <DialogDescription>Insights baseados nos seus movimentos nesta partida.</DialogDescription>
+            <DialogDescription>Dicas personalizadas para você melhorar seu jogo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-6 mt-4">
             <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
-              <h4 className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Pontos Fortes</h4>
+              <h4 className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Seus Acertos</h4>
               <p className="text-sm text-green-800 leading-relaxed">{analysis?.strengths}</p>
             </div>
             <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-              <h4 className="text-xs font-bold text-red-700 uppercase tracking-widest mb-2">Pontos Fracos</h4>
+              <h4 className="text-xs font-bold text-red-700 uppercase tracking-widest mb-2">Onde Melhorar</h4>
               <p className="text-sm text-red-800 leading-relaxed">{analysis?.weaknesses}</p>
             </div>
             <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-              <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Avaliação Geral</h4>
+              <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Avaliação Final</h4>
               <p className="text-sm font-medium leading-relaxed">{analysis?.overallAssessment}</p>
             </div>
           </div>
