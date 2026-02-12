@@ -193,8 +193,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const copyInviteLink = async () => {
-    // IMPORTANTE: O link "firebaseapp.com" é o ÚNICO que funciona no celular de outras pessoas.
-    // O link que você usa no computador (workstations.cloud) é privado e dá erro 401 para outros.
+    // IMPORTANTE: O link "firebaseapp.com" é o ÚNICO que funciona para convidados externos.
     const publicOrigin = 'https://studio-3509208910-49f15.firebaseapp.com';
     const inviteUrl = `${publicOrigin}/play?room=${gameId}`;
     
@@ -204,7 +203,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setHasCopied(true);
         toast({ 
           title: "Link Copiado!", 
-          description: "Envie para sua filha. Certifique-se de ter clicado em 'Deploy' para o link funcionar." 
+          description: "Certifique-se de ter clicado no botão 'Publish' no topo da tela para o link funcionar." 
         });
         setTimeout(() => setHasCopied(false), 2000);
       } else {
@@ -226,7 +225,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider">Atenção!</AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed">
-            Para sua filha conseguir acessar o link no celular dela, você <strong>DEVE</strong> clicar no botão <strong>"Deploy"</strong> no topo da tela do Firebase Studio. Caso contrário, ela verá o erro "Page Not Found".
+            Para sua filha conseguir acessar o link no celular dela, você <strong>DEVE</strong> clicar no botão <strong>"Publish"</strong> no topo da tela do Firebase Studio. Caso contrário, ela verá o erro "Page Not Found".
           </AlertDescription>
         </Alert>
       )}
