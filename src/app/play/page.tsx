@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChessBoard } from '@/components/chess/ChessBoard';
 import { Button } from '@/components/ui/button';
-import { Settings, Brain, Users, BookOpen, Zap, ChevronLeft, Plus, Loader2 } from 'lucide-react';
+import { Settings, Brain, Users, BookOpen, Zap, ChevronLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, useFirestore } from '@/firebase';
@@ -32,11 +32,20 @@ export default function PlayPage() {
   const [activeMode, setActiveMode] = useState<'ai' | 'pvp' | 'learning'>(roomFromUrl ? 'pvp' : 'ai');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isCreating, setIsCreating] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    if (auth && !auth.currentUser) {
-      signInAnonymously(auth).catch(err => console.error("Erro no login anônimo:", err));
-    }
+    const init = async () => {
+      if (auth && !auth.currentUser) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error("Erro no login anônimo:", err);
+        }
+      }
+      setIsInitializing(false);
+    };
+    init();
   }, [auth]);
 
   const createRoom = async () => {
@@ -53,7 +62,6 @@ export default function PlayPage() {
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
       
-      // Salvando como FEN (string simples) para evitar erro de "Nested arrays"
       await setDoc(gameRef, {
         id: newRoomId,
         fen: INITIAL_FEN,
@@ -82,6 +90,19 @@ export default function PlayPage() {
       setIsCreating(false);
     }
   };
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
+          <p className="text-sm font-medium text-muted-foreground animate-pulse">
+            Preparando o tabuleiro...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

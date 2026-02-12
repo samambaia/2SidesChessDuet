@@ -1,6 +1,7 @@
 
 "use client";
 
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -9,10 +10,13 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useUser, useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
   const heroImage = PlaceHolderImages.find(img => img.id === 'hero-chess');
 
   const handleSignOut = async () => {
@@ -23,6 +27,12 @@ export default function Home() {
     }
   };
 
+  const handlePlayNow = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsNavigating(true);
+    router.push('/play');
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="px-6 h-16 flex items-center border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
@@ -31,7 +41,12 @@ export default function Home() {
           <span className="font-bold text-xl">ChessDuet</span>
         </Link>
         <nav className="ml-auto flex items-center gap-6">
-          <Link className="text-sm font-medium hover:text-primary transition-colors" href="/play">
+          <Link 
+            className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-2" 
+            href="/play"
+            onClick={() => setIsNavigating(true)}
+          >
+            {isNavigating && <Loader2 className="h-3 w-3 animate-spin" />}
             Play
           </Link>
           
@@ -79,8 +94,20 @@ export default function Home() {
                 </p>
               </div>
               <div className="flex gap-4">
-                <Button asChild size="lg" className="rounded-full px-8 shadow-lg shadow-primary/20">
-                  <Link href="/play">Play Now</Link>
+                <Button 
+                  onClick={handlePlayNow}
+                  size="lg" 
+                  disabled={isNavigating}
+                  className="rounded-full px-8 shadow-lg shadow-primary/20 min-w-[160px]"
+                >
+                  {isNavigating ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Iniciando...
+                    </>
+                  ) : (
+                    "Play Now"
+                  )}
                 </Button>
                 {!user && !isUserLoading && (
                   <Button asChild variant="outline" size="lg" className="rounded-full px-8">
