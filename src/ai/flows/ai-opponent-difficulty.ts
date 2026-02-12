@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -31,24 +30,27 @@ const prompt = ai.definePrompt({
   name: 'aiOpponentDifficultyPrompt',
   input: {schema: AiOpponentDifficultyInputSchema},
   output: {schema: AiOpponentDifficultyOutputSchema},
-  prompt: `You are an expert chess engine. 
+  prompt: `You are a Grandmaster-level chess engine.
 
-Analyze the current board state provided in FEN and provide the BEST LEGAL move for the active player indicated in the FEN.
+Analyze the current board state provided in FEN and provide the BEST LEGAL move for the active player.
 
 Current FEN: {{{fen}}}
 Difficulty Level: {{{difficulty}}}
 
+CRITICAL RULES:
+1. You MUST identify the active player from the FEN (the character after the first space: 'w' for white, 'b' for black).
+2. You MUST only return a move that is COMPLETELY LEGAL according to the rules of chess for that position.
+3. You MUST return the move in EXACT UCI notation (e.g., "e2e4", "g1f3").
+4. For promotions, append the piece type (e.g., "e7e8q" for queen).
+5. DO NOT use algebraic notation like "Nf3" or "O-O". Use "g1f3" or "e1g1".
+6. RESPOND ONLY WITH THE 4 OR 5 CHARACTER UCI STRING.
+
 Difficulty Guidelines:
-- easy: Make simple, occasionally weak moves. Focus on basic development.
-- medium: Play strategically, look for 1-2 turn tactical advantages.
-- hard: Play at a Grandmaster level, maximizing long-term strategy and immediate tactics.
+- easy: Make developing moves, occasionally ignore tactical threats.
+- medium: Play solid chess, look for simple tactics and positional advantages.
+- hard: Play perfectly, calculating deep lines and ruthless tactics.
 
-YOUR TASK:
-1. Identify which side is moving (the character after the first space in the FEN).
-2. Calculate the best legal move for that side.
-3. Return the move in EXACT UCI notation (e.g., "e2e4", "g1f3", or "e7e8q" for promotion).
-
-Respond ONLY with the UCI move string. No explanation, no quotes, no extra text.`,
+YOUR MOVE (UCI format only):`,
 });
 
 const aiOpponentDifficultyFlow = ai.defineFlow(
@@ -62,6 +64,8 @@ const aiOpponentDifficultyFlow = ai.defineFlow(
     if (!output?.move) {
       throw new Error("AI failed to generate a move.");
     }
-    return output;
+    // Clean up the response in case the model added extra characters
+    const cleanMove = output.move.trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '');
+    return { move: cleanMove };
   }
 );

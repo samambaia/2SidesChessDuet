@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -58,7 +57,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Prevention of accidental navigation
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!game.isGameOver() && game.history().length > 0) {
@@ -70,12 +68,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [game]);
 
-  // Check for saved game on mount
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved && !gameId) {
       const parsed = JSON.parse(saved);
-      // Only offer resume if it's not the initial state and was saved recently
       if (parsed.fen !== INITIAL_FEN) {
         setSavedGameData(parsed);
         setShowResumeDialog(true);
@@ -83,9 +79,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [gameId]);
 
-  // Save state to localStorage on every move
   useEffect(() => {
-    if (!gameId) { // Only for AI/Learning modes, PvP is in Firestore
+    if (!gameId) {
       const state = {
         fen: game.fen(),
         mode,
@@ -97,7 +92,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [board, turn, mode, difficulty, elapsedSeconds, gameId, game]);
 
-  // Auto-join logic for Player 2
   useEffect(() => {
     if (remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
       updateDocumentNonBlocking(gameRef!, {
@@ -107,7 +101,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, user, gameRef]);
 
-  // Sync remote state to local chess.js instance
   useEffect(() => {
     if (remoteGame?.fen) {
       if (remoteGame.fen !== game.fen()) {
@@ -115,9 +108,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           game.load(remoteGame.fen);
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
-        } catch (e) {
-          // Silent catch for sync discrepancies
-        }
+        } catch (e) {}
       }
     } else if (!gameId && !savedGameData) {
       game.load(INITIAL_FEN);
@@ -126,7 +117,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, gameId, game, savedGameData]);
 
-  // Timer logic
   useEffect(() => {
     if (game.isGameOver()) return;
     const interval = setInterval(() => {
@@ -149,22 +139,41 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const triggerAiMove = useCallback(async () => {
     if (game.isGameOver()) return;
     setIsThinking(true);
+    
     try {
       const fen = game.fen();
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
-      const move = game.move(aiResponse.move.trim().toLowerCase());
+      const moveStr = aiResponse.move.trim().toLowerCase();
+      
+      // Attempt to apply the move. chess.js .move() returns null if invalid
+      const move = game.move(moveStr);
       
       if (move) {
         setBoard(chessJsToBoard(game));
         setTurn(game.turn());
         syncToFirestore();
+      } else {
+        // Fallback: If AI suggested an illegal move, pick a random legal one 
+        // to avoid freezing the game, but warn the user.
+        console.warn("IA sugeriu movimento inválido:", moveStr);
+        const legalMoves = game.moves();
+        if (legalMoves.length > 0) {
+          game.move(legalMoves[Math.floor(Math.random() * legalMoves.length)]);
+          setBoard(chessJsToBoard(game));
+          setTurn(game.turn());
+          syncToFirestore();
+        }
       }
     } catch (error: any) {
-      // AI failed to respond
+      toast({ 
+        title: "Erro na IA", 
+        description: "Não foi possível obter o movimento da IA. Tente novamente.",
+        variant: "destructive"
+      });
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, game, syncToFirestore]);
+  }, [difficulty, game, syncToFirestore, toast]);
 
   const executeMove = async (to: ChessSquare, fromOverride?: ChessSquare) => {
     const from = fromOverride || selected;
@@ -183,7 +192,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           return;
         }
       } catch (err) {
-        // Feedback service error
       } finally {
         setIsThinking(false);
       }
@@ -206,7 +214,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         toast({ title: "Fim de Jogo", description: winMessage });
         localStorage.removeItem(STORAGE_KEY);
       } else if (mode === 'ai' && game.turn() === 'b') {
-        setTimeout(triggerAiMove, 600);
+        // Reduced delay for a tighter feel
+        setTimeout(triggerAiMove, 500);
       }
     } catch (e) {
       toast({ title: "Ops!", description: "Movimento ilegal.", variant: "destructive" });
@@ -459,7 +468,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         </div>
       </div>
 
-      {/* Resume Game Dialog */}
       <Dialog open={showResumeDialog} onOpenChange={setShowResumeDialog}>
         <DialogContent className="max-w-md rounded-[2.5rem] p-10">
           <DialogHeader>
