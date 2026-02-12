@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -21,6 +21,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from '@/components/ui/badge';
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
@@ -52,7 +53,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Sincronização de entrada do segundo jogador
   useEffect(() => {
     if (remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
       updateDoc(gameRef!, {
@@ -62,7 +62,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, user, gameRef]);
 
-  // Sincronização do estado do tabuleiro
   useEffect(() => {
     if (remoteGame?.fen) {
       try {
@@ -122,17 +121,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const executeMove = async (to: ChessSquare) => {
     if (!selected) return;
-
     const from = selected;
     const uci = `${from}${to}`;
 
     if (mode === 'learning') {
       setIsThinking(true);
       try {
-        const feedback = await getMoveFeedback({
-          currentBoardState: game.fen(),
-          userMove: uci
-        });
+        const feedback = await getMoveFeedback({ currentBoardState: game.fen(), userMove: uci });
         if (!feedback.isLegalMove) {
           toast({ title: "Movimento Inválido", description: feedback.feedback, variant: "destructive" });
           setSelected(null);
@@ -148,7 +143,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     try {
       const move = game.move({ from, to, promotion: 'q' });
-      
       if (!move) return;
 
       setBoard(chessJsToBoard(game));
@@ -174,12 +168,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const handleSquareClick = (r: number, f: number) => {
     if (isThinking || game.isGameOver()) return;
     const squareName = getSquareName(r, f);
-
     if (selected && possibleMoves.includes(squareName)) {
       executeMove(squareName);
       return;
     }
-
     const piece = game.get(squareName);
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
@@ -195,48 +187,39 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setIsAnalyzing(true);
     try {
       const historyStr = game.history().join(', ');
-      const result = await analyzeGameHistory({ gameHistory: historyStr || "Partida curta sem movimentos registrados." });
+      const result = await analyzeGameHistory({ gameHistory: historyStr || "Partida curta." });
       setAnalysis(result);
     } catch (err) {
-      toast({ title: "Erro na Análise", description: "Não foi possível analisar esta partida.", variant: "destructive" });
+      toast({ title: "Erro na Análise", variant: "destructive" });
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const copyInviteLink = async () => {
-    const publicOrigin = 'https://studio-3509208910-49f15.firebaseapp.com';
-    const inviteUrl = `${publicOrigin}/play?room=${gameId}`;
-    
+    const publicUrl = `https://studio-3509208910-49f15.firebaseapp.com/play?room=${gameId}`;
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(inviteUrl);
-        setHasCopied(true);
-        toast({ 
-          title: "Link Copiado!", 
-          description: "Mande para sua filha. Se o site ainda não abrir, aguarde alguns minutos pela publicação." 
-        });
-        setTimeout(() => setHasCopied(false), 2000);
-      } else {
-        throw new Error("Clipboard API indisponível");
-      }
+      await navigator.clipboard.writeText(publicUrl);
+      setHasCopied(true);
+      toast({ title: "Link Copiado!", description: "Envie este link para sua filha pelo WhatsApp." });
+      setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {
-      toast({ 
-        title: "Copie este Link", 
-        description: inviteUrl,
-        variant: "default"
-      });
+      toast({ title: "Copie este link manualmente:", description: publicUrl });
     }
   };
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px]">
       {gameId && (
-        <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2">
+        <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 animate-in fade-in slide-in-from-top-4 duration-500">
           <AlertCircle className="h-4 w-4 text-primary" />
-          <AlertTitle className="text-xs font-bold uppercase tracking-wider">Atenção!</AlertTitle>
-          <AlertDescription className="text-[11px] leading-relaxed">
-            Certifique-se de que clicou em <strong>"Publish"</strong> e que o processo terminou. O link só funcionará no celular dela após a publicação completa.
+          <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+            Status da Publicação
+            <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700 border-yellow-200">Em progresso</Badge>
+          </AlertTitle>
+          <AlertDescription className="text-[11px] leading-relaxed mt-1">
+            Você pode acompanhar o progresso no botão <strong>Publish</strong> no topo do editor. 
+            O link só funcionará no celular dela quando o status mudar para "Published".
           </AlertDescription>
         </Alert>
       )}
@@ -253,15 +236,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         </div>
 
         {gameId && (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="rounded-full gap-2"
-            onClick={copyInviteLink}
-          >
-            {hasCopied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
-            {hasCopied ? "Copiado" : "Convidar"}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full gap-2 border-primary/20 hover:bg-primary/5"
+              onClick={copyInviteLink}
+            >
+              {hasCopied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+              {hasCopied ? "Copiado" : "Convidar Filha"}
+            </Button>
+          </div>
         )}
       </div>
 
