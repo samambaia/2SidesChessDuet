@@ -199,14 +199,26 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const copyInviteLink = async () => {
-    const url = window.location.href;
+    // Definimos o domínio público do seu projeto no Firebase
+    const publicDomain = "https://studio-3509208910-49f15.firebaseapp.com";
+    const inviteUrl = `${publicDomain}/play?room=${gameId}`;
+    
     try {
-      await navigator.clipboard.writeText(url);
-      setHasCopied(true);
-      toast({ title: "Link Copiado!" });
-      setTimeout(() => setHasCopied(false), 2000);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(inviteUrl);
+        setHasCopied(true);
+        toast({ title: "Link Copiado!", description: "Envie para sua filha jogar." });
+        setTimeout(() => setHasCopied(false), 2000);
+      } else {
+        throw new Error("Clipboard API indisponível");
+      }
     } catch (err) {
-      toast({ title: "Copie Manualmente", description: url });
+      // Caso o navegador bloqueie a cópia automática (comum em smartphones por política de segurança)
+      toast({ 
+        title: "Copie Manualmente", 
+        description: inviteUrl,
+        variant: "default"
+      });
     }
   };
 
