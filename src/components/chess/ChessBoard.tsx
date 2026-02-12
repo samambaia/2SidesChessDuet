@@ -58,12 +58,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
         }
-        
-        if (remoteGame.startTime && elapsedSeconds === 0) {
-          const start = remoteGame.startTime.toDate ? remoteGame.startTime.toDate().getTime() : remoteGame.startTime;
-          const now = Date.now();
-          setElapsedSeconds(Math.floor((now - start) / 1000));
-        }
       } catch (e) {
         console.error("Falha ao carregar FEN remoto:", remoteGame.fen);
       }
@@ -71,7 +65,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       game.load(INITIAL_FEN);
       setBoard(chessJsToBoard(game));
       setTurn('w');
-      setElapsedSeconds(0);
     }
   }, [remoteGame, gameId, game]);
 
@@ -199,9 +192,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const copyInviteLink = async () => {
-    // Definimos o domínio público do seu projeto no Firebase
-    const publicDomain = "https://studio-3509208910-49f15.firebaseapp.com";
-    const inviteUrl = `${publicDomain}/play?room=${gameId}`;
+    // Usamos window.location.origin para que o link sempre aponte para onde você está agora
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://studio-3509208910-49f15.firebaseapp.com';
+    const inviteUrl = `${origin}/play?room=${gameId}`;
     
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -213,7 +206,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         throw new Error("Clipboard API indisponível");
       }
     } catch (err) {
-      // Caso o navegador bloqueie a cópia automática (comum em smartphones por política de segurança)
       toast({ 
         title: "Copie Manualmente", 
         description: inviteUrl,
