@@ -83,7 +83,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, gameId, game]);
 
-  // Timer logic
+  // Timer logic - client side only to avoid hydration mismatch
   useEffect(() => {
     if (game.isGameOver()) return;
     const interval = setInterval(() => {
@@ -117,7 +117,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         syncToFirestore();
       }
     } catch (error: any) {
-      // IA failed to respond or move was invalid
+      // AI failed to respond or move was invalid
     } finally {
       setIsThinking(false);
     }
@@ -250,7 +250,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       await navigator.clipboard.writeText(text);
       setHasCopied(true);
-      toast({ title: "Link Copiado!", description: "Agora é só colar no WhatsApp da sua filha!" });
+      toast({ title: "Link Copiado!", description: "Agora é só compartilhar com quem você quer jogar!" });
       setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {
       toast({ title: "Link da Sala:", description: text });
@@ -258,67 +258,65 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-[600px]">
+    <div className="flex flex-col items-center gap-6 w-full max-w-[600px] animate-in fade-in duration-700">
       {gameId && (
-        <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 animate-in fade-in slide-in-from-top-4 duration-500">
+        <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 shadow-sm">
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Status do Site
+            Status da Publicação
             <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700 border-yellow-200">Aguardando Publish</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Se o link der erro, verifique se o botão <strong>Publish</strong> no topo terminou. O site público só funciona após a conclusão.
+            Certifique-se de que o botão <strong>Publish</strong> no topo terminou para que o link funcione no celular da sua filha.
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="w-full flex items-center justify-between px-4 py-3 bg-accent/20 rounded-2xl border border-accent/30 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary/10 p-2 rounded-full">
+      <div className="w-full flex items-center justify-between px-6 py-4 bg-accent/20 rounded-[1.5rem] border border-accent/30 shadow-md backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <div className="bg-primary/10 p-2.5 rounded-xl">
             <Timer className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Duração</p>
-            <p className="text-xl font-mono font-bold">{formatTotalTime(elapsedSeconds)}</p>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">Tempo Decorrido</p>
+            <p className="text-2xl font-mono font-bold tracking-tight">{formatTotalTime(elapsedSeconds)}</p>
           </div>
         </div>
 
         {gameId && (
-          <div className="flex gap-2">
-            <Button 
-              variant="default" 
-              size="sm" 
-              className="rounded-full gap-2 shadow-md"
-              onClick={handleInvite}
-            >
-              {hasCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-              {hasCopied ? "Copiado" : "Convidar Filha"}
-            </Button>
-          </div>
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="rounded-full gap-2 px-6 h-11 font-bold shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all active:scale-95"
+            onClick={handleInvite}
+          >
+            {hasCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+            {hasCopied ? "Copiado!" : "Convidar"}
+          </Button>
         )}
       </div>
 
-      <div className="flex items-center gap-4 mb-2">
+      <div className="flex items-center gap-6 mb-2">
         <div className={cn(
-          "px-4 py-1 rounded-full text-xs font-bold transition-all border",
-          turn === 'w' ? "bg-white text-black border-primary shadow-md scale-105" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
+          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
+          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
         )}>
           BRANCAS
         </div>
         <div className={cn(
-          "px-4 py-1 rounded-full text-xs font-bold transition-all border",
-          turn === 'b' ? "bg-black text-white border-primary shadow-md scale-105" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
+          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
+          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
         )}>
           PRETAS
         </div>
       </div>
 
-      <div className="chess-board relative">
+      <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/5">
         {isThinking && (
-          <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-50 flex items-center justify-center rounded-lg">
-             <div className="bg-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span className="text-xs font-bold uppercase text-primary">Processando...</span>
+          <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
+             <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-100 animate-in zoom-in-95">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                <span className="text-sm font-black uppercase tracking-widest text-primary">Processando Jogada...</span>
              </div>
           </div>
         )}
@@ -338,15 +336,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 onDrop={(e) => handleDrop(e, squareName)}
                 className={cn(
                   "chess-square",
-                  isLight ? "light" : "dark",
-                  isSelected && "highlight-selected",
+                  isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
+                  isSelected && "bg-[#F5F682]/80",
                   isPossible && "cursor-pointer"
                 )}
               >
                 {isPossible && (
                   <div className={cn(
                     "absolute z-20 rounded-full",
-                    piece ? "inset-0 border-4 border-primary/30" : "w-4 h-4 bg-primary/30"
+                    piece ? "inset-0 border-[6px] border-black/10" : "w-5 h-5 bg-black/10"
                   )} />
                 )}
                 {piece && (
@@ -354,9 +352,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                     draggable 
                     onDragStart={(e) => handleDragStart(e, squareName)}
                     className={cn(
-                      "chess-piece text-4xl sm:text-6xl flex items-center justify-center transition-transform active:scale-125 touch-none",
-                      isSelected && "scale-110",
-                      piece === piece.toUpperCase() ? "text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]" : "text-slate-900"
+                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all active:scale-125 touch-none select-none",
+                      isSelected && "scale-110 rotate-3",
+                      piece === piece.toUpperCase() ? "text-white drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]" : "text-slate-900 drop-shadow-[0_2px_3px_rgba(255,255,255,0.2)]"
                     )}>
                     {PIECE_ICONS[piece]}
                   </div>
@@ -369,29 +367,32 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
       <div className="flex flex-col gap-4 w-full">
         {game.isGameOver() && (
-          <div className="flex flex-col gap-2 p-6 bg-primary/5 border border-primary/10 rounded-3xl text-center animate-in zoom-in-95 duration-300">
-            <p className="font-bold text-primary flex items-center justify-center gap-2">
-              <Award className="w-5 h-5" />
-              Partida Finalizada!
-            </p>
+          <div className="flex flex-col gap-4 p-8 bg-primary/10 border-2 border-primary/20 rounded-[2rem] text-center animate-in zoom-in-95 duration-500 shadow-xl">
+            <div className="mx-auto bg-primary/20 p-4 rounded-full">
+              <Award className="w-10 h-10 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-primary uppercase tracking-tight">Fim de Partida</h3>
+              <p className="text-sm font-medium text-slate-600 mt-1">Gostaria de uma análise técnica da IA sobre este jogo?</p>
+            </div>
             <Button 
-              className="mt-2 rounded-xl gap-2 h-12 shadow-lg shadow-primary/20"
+              className="rounded-2xl gap-3 h-14 text-lg font-bold shadow-xl shadow-primary/25"
               onClick={handleAnalyzeMatch}
               disabled={isAnalyzing}
             >
-              {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
-              {isAnalyzing ? "Analisando..." : "Ver Feedback da IA"}
+              {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
+              {isAnalyzing ? "Gerando Relatório..." : "Receber Feedback da IA"}
             </Button>
           </div>
         )}
 
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center mt-2">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-xs text-muted-foreground gap-2 h-8"
+            className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest gap-2 hover:bg-destructive/5 hover:text-destructive transition-colors"
             onClick={() => {
-              if (confirm("Deseja reiniciar a partida atual?")) {
+              if (confirm("Deseja mesmo reiniciar a partida? Todo o progresso atual será perdido.")) {
                 game.load(INITIAL_FEN);
                 setBoard(chessJsToBoard(game));
                 setTurn('w');
@@ -403,32 +404,36 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             }}
           >
             <RotateCcw className="w-3 h-3" />
-            Reiniciar Jogo
+            Reiniciar Tabuleiro
           </Button>
         </div>
       </div>
 
       <Dialog open={!!analysis} onOpenChange={() => setAnalysis(null)}>
-        <DialogContent className="max-w-lg rounded-[2rem] p-8">
+        <DialogContent className="max-w-xl rounded-[2.5rem] p-10 border-none shadow-3xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-2xl">
-              <Activity className="w-6 h-6 text-primary" />
-              Análise do Professor
+            <DialogTitle className="flex items-center gap-3 text-3xl font-black tracking-tight">
+              <div className="bg-primary/10 p-3 rounded-2xl">
+                <Activity className="w-8 h-8 text-primary" />
+              </div>
+              Análise do Tutor
             </DialogTitle>
-            <DialogDescription>Dicas personalizadas para você melhorar seu jogo.</DialogDescription>
+            <DialogDescription className="text-lg font-medium">
+              Aqui estão os insights sobre sua performance técnica.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 mt-4">
-            <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
-              <h4 className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Seus Acertos</h4>
-              <p className="text-sm text-green-800 leading-relaxed">{analysis?.strengths}</p>
+          <div className="space-y-6 mt-8">
+            <div className="p-6 bg-green-50 rounded-[1.5rem] border border-green-100/50 shadow-sm">
+              <h4 className="text-[11px] font-black text-green-700 uppercase tracking-[0.2em] mb-3">PONTOS FORTES</h4>
+              <p className="text-base text-green-800 leading-relaxed font-medium">{analysis?.strengths}</p>
             </div>
-            <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-              <h4 className="text-xs font-bold text-red-700 uppercase tracking-widest mb-2">Onde Melhorar</h4>
-              <p className="text-sm text-red-800 leading-relaxed">{analysis?.weaknesses}</p>
+            <div className="p-6 bg-amber-50 rounded-[1.5rem] border border-amber-100/50 shadow-sm">
+              <h4 className="text-[11px] font-black text-amber-700 uppercase tracking-[0.2em] mb-3">OPORTUNIDADES</h4>
+              <p className="text-base text-amber-800 leading-relaxed font-medium">{analysis?.weaknesses}</p>
             </div>
-            <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-              <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Avaliação Final</h4>
-              <p className="text-sm font-medium leading-relaxed">{analysis?.overallAssessment}</p>
+            <div className="p-6 bg-primary/5 rounded-[1.5rem] border border-primary/10 shadow-inner">
+              <h4 className="text-[11px] font-black text-primary uppercase tracking-[0.2em] mb-3">VEREDITO FINAL</h4>
+              <p className="text-lg font-bold text-slate-800 leading-snug">{analysis?.overallAssessment}</p>
             </div>
           </div>
         </DialogContent>
