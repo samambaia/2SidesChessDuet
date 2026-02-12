@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
@@ -192,15 +193,19 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const copyInviteLink = async () => {
-    // Usamos window.location.origin para que o link sempre aponte para onde você está agora
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://studio-3509208910-49f15.firebaseapp.com';
-    const inviteUrl = `${origin}/play?room=${gameId}`;
+    // IMPORTANTE: O link "firebaseapp.com" é o ÚNICO que funciona no celular de outras pessoas.
+    // O link que você usa no computador (workstations.cloud) é privado e dá erro 401 para outros.
+    const publicOrigin = 'https://studio-3509208910-49f15.firebaseapp.com';
+    const inviteUrl = `${publicOrigin}/play?room=${gameId}`;
     
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(inviteUrl);
         setHasCopied(true);
-        toast({ title: "Link Copiado!", description: "Envie para sua filha jogar." });
+        toast({ 
+          title: "Link Copiado!", 
+          description: "Envie para sua filha. Certifique-se de ter clicado em 'Deploy' para o link funcionar." 
+        });
         setTimeout(() => setHasCopied(false), 2000);
       } else {
         throw new Error("Clipboard API indisponível");
@@ -216,6 +221,16 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px]">
+      {gameId && (
+        <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2">
+          <AlertCircle className="h-4 w-4 text-primary" />
+          <AlertTitle className="text-xs font-bold uppercase tracking-wider">Atenção!</AlertTitle>
+          <AlertDescription className="text-[11px] leading-relaxed">
+            Para sua filha conseguir acessar o link no celular dela, você <strong>DEVE</strong> clicar no botão <strong>"Deploy"</strong> no topo da tela do Firebase Studio. Caso contrário, ela verá o erro "Page Not Found".
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="w-full flex items-center justify-between px-4 py-3 bg-accent/20 rounded-2xl border border-accent/30 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="bg-primary/10 p-2 rounded-full">
