@@ -11,7 +11,7 @@ import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/an
 import { Button } from '@/components/ui/button';
 import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import {
   Dialog,
@@ -30,6 +30,7 @@ interface ChessBoardProps {
 
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
   const firestore = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   
   const game = useMemo(() => new Chess(), []);
@@ -51,6 +52,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
+  // Sincronização de entrada do segundo jogador
+  useEffect(() => {
+    if (remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
+      updateDoc(gameRef!, {
+        player2Id: user.uid,
+        lastUpdated: serverTimestamp()
+      }).catch(err => console.error("Erro ao entrar na sala:", err));
+    }
+  }, [remoteGame, user, gameRef]);
+
+  // Sincronização do estado do tabuleiro
   useEffect(() => {
     if (remoteGame?.fen) {
       try {
@@ -84,7 +96,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         turn: game.turn(),
         moves: game.history(),
         lastUpdated: serverTimestamp()
-      }).catch(err => console.error("Sync error:", err));
+      }).catch(err => console.error("Erro de sincronização:", err));
     }
   }, [gameId, gameRef, game]);
 
@@ -193,7 +205,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const copyInviteLink = async () => {
-    // IMPORTANTE: O link "firebaseapp.com" é o ÚNICO que funciona para convidados externos.
     const publicOrigin = 'https://studio-3509208910-49f15.firebaseapp.com';
     const inviteUrl = `${publicOrigin}/play?room=${gameId}`;
     
@@ -203,7 +214,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setHasCopied(true);
         toast({ 
           title: "Link Copiado!", 
-          description: "Certifique-se de ter clicado no botão 'Publish' no topo da tela para o link funcionar." 
+          description: "Mande para sua filha. Se o site ainda não abrir, aguarde alguns minutos pela publicação." 
         });
         setTimeout(() => setHasCopied(false), 2000);
       } else {
@@ -211,7 +222,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }
     } catch (err) {
       toast({ 
-        title: "Copie Manualmente", 
+        title: "Copie este Link", 
         description: inviteUrl,
         variant: "default"
       });
@@ -225,7 +236,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider">Atenção!</AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed">
-            Para sua filha conseguir acessar o link no celular dela, você <strong>DEVE</strong> clicar no botão <strong>"Publish"</strong> no topo da tela do Firebase Studio. Caso contrário, ela verá o erro "Page Not Found".
+            Certifique-se de que clicou em <strong>"Publish"</strong> e que o processo terminou. O link só funcionará no celular dela após a publicação completa.
           </AlertDescription>
         </Alert>
       )}

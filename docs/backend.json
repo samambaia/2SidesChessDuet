@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -27,36 +28,6 @@
         "email"
       ]
     },
-    "GameRoom": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "GameRoom",
-      "type": "object",
-      "description": "Represents a game room where two players can play chess.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the game room."
-        },
-        "player1Id": {
-          "type": "string",
-          "description": "Reference to User. ID of the first player in the game room. (Relationship: User 1:N GameRoom)"
-        },
-        "player2Id": {
-          "type": "string",
-          "description": "Reference to User. ID of the second player in the game room. (Relationship: User 1:N GameRoom). Null if only one player has joined."
-        },
-        "creationDate": {
-          "type": "string",
-          "description": "The date and time the game room was created.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "player1Id",
-        "creationDate"
-      ]
-    },
     "Game": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Game",
@@ -69,7 +40,11 @@
         },
         "gameRoomId": {
           "type": "string",
-          "description": "Reference to GameRoom. ID of the game room where the game is being played. (Relationship: GameRoom 1:N Game)"
+          "description": "Reference to GameRoom. ID of the game room where the game is being played."
+        },
+        "fen": {
+          "type": "string",
+          "description": "The current board state in Forsyth–Edwards Notation (FEN)."
         },
         "startTime": {
           "type": "string",
@@ -78,38 +53,42 @@
         },
         "endTime": {
           "type": "string",
-          "description": "The date and time the game ended. Null if the game is still in progress.",
+          "description": "The date and time the game ended.",
           "format": "date-time"
         },
-        "totalTime": {
-          "type": "number",
-          "description": "Total elapsed time of the game in seconds.",
-          "format": "number"
+        "player1Id": {
+          "type": "string",
+          "description": "ID of the white player."
+        },
+        "player2Id": {
+          "type": "string",
+          "description": "ID of the black player."
         },
         "moves": {
           "type": "array",
-          "description": "Array of chess moves in a standard notation (e.g., SAN or PGN).",
+          "description": "Array of chess moves in algebraic notation.",
           "items": {
             "type": "string"
           }
         },
-        "result": {
-          "type": "string",
-          "description": "The result of the game (e.g., 'white wins', 'black wins', 'draw')."
+        "totalTime": {
+          "type": "number",
+          "description": "Total elapsed time of the game in seconds."
         }
       },
       "required": [
         "id",
-        "gameRoomId",
-        "startTime",
-        "moves",
-        "totalTime"
+        "fen",
+        "player1Id",
+        "startTime"
       ]
     }
   },
   "auth": {
     "providers": [
       "password",
+      "google",
+      "github",
       "anonymous"
     ]
   },
@@ -122,29 +101,7 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profile information. Path-based ownership ensures only the user can access their own data.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/game_rooms/{gameRoomId}",
-        "definition": {
-          "entityName": "GameRoom",
-          "schema": {
-            "$ref": "#/backend/entities/GameRoom"
-          },
-          "description": "Stores game room information, including player IDs and creation date.",
-          "params": [
-            {
-              "name": "gameRoomId",
-              "description": "The unique identifier of the game room."
-            }
-          ]
+          "description": "Stores user profile information."
         }
       },
       {
@@ -154,16 +111,9 @@
           "schema": {
             "$ref": "#/backend/entities/Game"
           },
-          "description": "Stores game data, including moves, start/end times, and total time. Includes denormalized `player1Id` and `player2Id` from the associated GameRoom for authorization independence.",
-          "params": [
-            {
-              "name": "gameId",
-              "description": "The unique identifier of the game."
-            }
-          ]
+          "description": "Stores game data, including moves and players."
         }
       }
-    ],
-    "reasoning": "The Firestore structure prioritizes authorization independence and simplicity for ChessDuet.  User data is stored in `/users/{userId}`, ensuring path-based ownership for private user data. Game rooms are stored in `/game_rooms/{gameRoomId}`, and each game room document contains the `player1Id` and `player2Id` fields. The structure uses the strategy of authorization independence. Because authorization to read or write in the GameRooms depends on the players, we denormalize the `player1Id` and `player2Id` into the `game` documents. Games are stored in `/games/{gameId}`. This structure supports QAPs because `list` operations are scoped within a user's path for private data and can be performed on the top-level `game_rooms` collection with appropriate security rules based on the `player1Id` and `player2Id` to filter the list."
+    ]
   }
 }
