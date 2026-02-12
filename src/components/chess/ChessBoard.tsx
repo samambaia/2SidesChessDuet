@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, ExternalLink } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -196,15 +196,34 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
-  const copyInviteLink = async () => {
+  const handleInvite = async () => {
     const publicUrl = `https://studio-3509208910-49f15.firebaseapp.com/play?room=${gameId}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'ChessDuet - Vamos jogar!',
+          text: 'Entre na minha sala de xadrez para uma partida!',
+          url: publicUrl,
+        });
+        toast({ title: "Enviado!", description: "Convite compartilhado com sucesso." });
+      } catch (err) {
+        // Fallback para cópia se o usuário cancelar o compartilhamento nativo
+        copyToClipboard(publicUrl);
+      }
+    } else {
+      copyToClipboard(publicUrl);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(publicUrl);
+      await navigator.clipboard.writeText(text);
       setHasCopied(true);
-      toast({ title: "Link Copiado!", description: "Envie este link para sua filha pelo WhatsApp." });
+      toast({ title: "Link Copiado!", description: "O link foi copiado para sua área de transferência." });
       setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {
-      toast({ title: "Copie este link manualmente:", description: publicUrl });
+      toast({ title: "Link do Jogo:", description: text });
     }
   };
 
@@ -218,8 +237,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700 border-yellow-200">Em progresso</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Você pode acompanhar o progresso no botão <strong>Publish</strong> no topo do editor. 
-            O link só funcionará no celular dela quando o status mudar para "Published".
+            Certifique-se de que o botão <strong>Publish</strong> no topo do editor finalizou. 
+            O site público só estará visível após a conclusão desse processo.
           </AlertDescription>
         </Alert>
       )}
@@ -238,12 +257,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         {gameId && (
           <div className="flex gap-2">
             <Button 
-              variant="outline" 
+              variant="default" 
               size="sm" 
-              className="rounded-full gap-2 border-primary/20 hover:bg-primary/5"
-              onClick={copyInviteLink}
+              className="rounded-full gap-2 shadow-md"
+              onClick={handleInvite}
             >
-              {hasCopied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+              {hasCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
               {hasCopied ? "Copiado" : "Convidar Filha"}
             </Button>
           </div>
@@ -315,7 +334,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
       <div className="flex flex-col gap-4 w-full">
         {game.isGameOver() && (
-          <div className="flex flex-col gap-2 p-6 bg-primary/5 border border-primary/10 rounded-3xl text-center">
+          <div className="flex flex-col gap-2 p-6 bg-primary/5 border border-primary/10 rounded-3xl text-center animate-in zoom-in-95 duration-300">
             <p className="font-bold text-primary flex items-center justify-center gap-2">
               <Award className="w-5 h-5" />
               Fim de Partida!
