@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, MessageSquare } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -119,9 +119,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [difficulty, game, syncToFirestore]);
 
-  const executeMove = async (to: ChessSquare) => {
-    if (!selected) return;
-    const from = selected;
+  const executeMove = async (to: ChessSquare, fromOverride?: ChessSquare) => {
+    const from = fromOverride || selected;
+    if (!from) return;
+    
     const uci = `${from}${to}`;
 
     if (mode === 'learning') {
@@ -183,6 +184,35 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, square: ChessSquare) => {
+    if (isThinking || game.isGameOver()) {
+      e.preventDefault();
+      return;
+    }
+    const piece = game.get(square);
+    if (piece && piece.color === game.turn()) {
+      setSelected(square);
+      const moves = game.moves({ square: square, verbose: true });
+      setPossibleMoves(moves.map(m => m.to));
+      e.dataTransfer.setData('fromSquare', square);
+      e.dataTransfer.effectAllowed = 'move';
+    } else {
+      e.preventDefault();
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, toSquare: ChessSquare) => {
+    e.preventDefault();
+    const fromSquare = e.dataTransfer.getData('fromSquare') as ChessSquare;
+    if (fromSquare && fromSquare !== toSquare) {
+      executeMove(toSquare, fromSquare);
+    }
+  };
+
   const handleAnalyzeMatch = async () => {
     setIsAnalyzing(true);
     try {
@@ -208,7 +238,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         });
         toast({ title: "Enviado!", description: "Convite compartilhado com sucesso." });
       } catch (err) {
-        // Fallback para cópia se o usuário cancelar o compartilhamento nativo
         copyToClipboard(publicUrl);
       }
     } else {
@@ -305,10 +334,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               <div
                 key={`${r}-${f}`}
                 onClick={() => handleSquareClick(r, f)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, squareName)}
                 className={cn(
                   "chess-square",
                   isLight ? "light" : "dark",
-                  isSelected && "highlight-selected"
+                  isSelected && "highlight-selected",
+                  isPossible && "cursor-pointer"
                 )}
               >
                 {isPossible && (
@@ -318,8 +350,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   )} />
                 )}
                 {piece && (
-                  <div className={cn(
-                      "chess-piece text-4xl sm:text-6xl flex items-center justify-center transition-transform",
+                  <div 
+                    draggable 
+                    onDragStart={(e) => handleDragStart(e, squareName)}
+                    className={cn(
+                      "chess-piece text-4xl sm:text-6xl flex items-center justify-center transition-transform active:scale-125 touch-none",
                       isSelected && "scale-110",
                       piece === piece.toUpperCase() ? "text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]" : "text-slate-900"
                     )}>
