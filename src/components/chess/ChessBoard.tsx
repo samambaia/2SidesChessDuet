@@ -4,14 +4,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Chess, Square as ChessSquare } from 'chess.js';
 import { cn } from '@/lib/utils';
-import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareName, getRankFile } from '@/lib/chess-utils';
+import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareName } from '@/lib/chess-utils';
 import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
+import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Info } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
@@ -23,7 +31,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  // Instância do motor de xadrez estável
   const game = useMemo(() => new Chess(), []);
   
   const [board, setBoard] = useState(chessJsToBoard(game));
@@ -31,10 +38,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [possibleMoves, setPossibleMoves] = useState<ChessSquare[]>([]);
   const [turn, setTurn] = useState<'w' | 'b'>('w');
   const [isThinking, setIsThinking] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalyzeGameHistoryOutput | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [hasCopied, setHasCopied] = useState(false);
 
-  // Sincronização com Firestore
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
     return doc(firestore, 'games', gameId);
@@ -42,15 +50,16 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Sincronizar estado local com o remoto (pvp)
   useEffect(() => {
     if (remoteGame?.fen) {
       try {
-        game.load(remoteGame.fen);
-        setBoard(chessJsToBoard(game));
-        setTurn(game.turn());
+        if (remoteGame.fen !== game.fen()) {
+          game.load(remoteGame.fen);
+          setBoard(chessJsToBoard(game));
+          setTurn(game.turn());
+        }
         
-        if (remoteGame.startTime) {
+        if (remoteGame.startTime && elapsedSeconds === 0) {
           const start = remoteGame.startTime.toDate ? remoteGame.startTime.toDate().getTime() : remoteGame.startTime;
           const now = Date.now();
           setElapsedSeconds(Math.floor((now - start) / 1000));
@@ -59,7 +68,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         console.error("Falha ao carregar FEN remoto:", remoteGame.fen);
       }
     } else if (!gameId) {
-      // Reiniciar para jogo local
       game.load(INITIAL_FEN);
       setBoard(chessJsToBoard(game));
       setTurn('w');
@@ -67,22 +75,22 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, gameId, game]);
 
-  // Timer do jogo
   useEffect(() => {
+    if (game.isGameOver()) return;
     const interval = setInterval(() => {
       setElapsedSeconds(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [game.isGameOver()]);
 
   const syncToFirestore = useCallback(async () => {
     if (gameId && gameRef) {
-      await updateDoc(gameRef, {
+      updateDoc(gameRef, {
         fen: game.fen(),
         turn: game.turn(),
         moves: game.history(),
         lastUpdated: serverTimestamp()
-      });
+      }).catch(err => console.error("Sync error:", err));
     }
   }, [gameId, gameRef, game]);
 
@@ -92,10 +100,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       const fen = game.fen();
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
-      
-      const moveStr = aiResponse.move.trim().toLowerCase();
-      // Tentar realizar o movimento da IA no motor local
-      const move = game.move(moveStr);
+      const move = game.move(aiResponse.move.trim().toLowerCase());
       
       if (move) {
         setBoard(chessJsToBoard(game));
@@ -115,7 +120,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const from = selected;
     const uci = `${from}${to}`;
 
-    // Modo Aprendizado: Validação por IA
     if (mode === 'learning') {
       setIsThinking(true);
       try {
@@ -136,14 +140,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }
     }
 
-    // Executar no motor (regras, roque, promoção automática para rainha)
     try {
       const move = game.move({ from, to, promotion: 'q' });
       
-      if (!move) {
-        toast({ title: "Movimento Ilegal", description: "Esta jogada não segue as regras do xadrez.", variant: "destructive" });
-        return;
-      }
+      if (!move) return;
 
       setBoard(chessJsToBoard(game));
       setSelected(null);
@@ -151,33 +151,29 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setTurn(game.turn());
       await syncToFirestore();
 
-      if (game.isCheckmate()) {
-        toast({ title: "Fim de Jogo!", description: `Xeque-mate! As ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.` });
-      } else if (game.isDraw()) {
-        toast({ title: "Empate!", description: "A partida terminou em empate." });
-      }
-
-      // Se for contra IA e o turno for dela
-      if (mode === 'ai' && game.turn() === 'b' && !game.isGameOver()) {
+      if (game.isGameOver()) {
+        if (game.isCheckmate()) {
+          toast({ title: "Xeque-mate!", description: `As ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.` });
+        } else {
+          toast({ title: "Empate!", description: "A partida terminou empatada." });
+        }
+      } else if (mode === 'ai' && game.turn() === 'b') {
         setTimeout(triggerAiMove, 600);
       }
     } catch (e) {
-      toast({ title: "Erro no Movimento", description: "Não foi possível realizar esta jogada.", variant: "destructive" });
+      toast({ title: "Erro", description: "Movimento inválido.", variant: "destructive" });
     }
   };
 
   const handleSquareClick = (r: number, f: number) => {
     if (isThinking || game.isGameOver()) return;
-
     const squareName = getSquareName(r, f);
 
-    // Se clicou em um destino possível
     if (selected && possibleMoves.includes(squareName)) {
       executeMove(squareName);
       return;
     }
 
-    // Selecionar peça
     const piece = game.get(squareName);
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
@@ -189,25 +185,28 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
+  const handleAnalyzeMatch = async () => {
+    setIsAnalyzing(true);
+    try {
+      const historyStr = game.history().join(', ');
+      const result = await analyzeGameHistory({ gameHistory: historyStr || "Partida curta sem movimentos registrados." });
+      setAnalysis(result);
+    } catch (err) {
+      toast({ title: "Erro na Análise", description: "Não foi possível analisar esta partida.", variant: "destructive" });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const copyInviteLink = async () => {
     const url = window.location.href;
     try {
-      // Tentativa de cópia moderna
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(url);
-        setHasCopied(true);
-        toast({ title: "Link Copiado!", description: "Envie para o oponente agora." });
-        setTimeout(() => setHasCopied(false), 2000);
-      } else {
-        throw new Error("Clipboard API indisponível");
-      }
+      await navigator.clipboard.writeText(url);
+      setHasCopied(true);
+      toast({ title: "Link Copiado!" });
+      setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {
-      // Fallback para cópia manual caso o navegador bloqueie por permissão
-      toast({ 
-        title: "Copie o link manualmente", 
-        description: `Link: ${url}`,
-        variant: "default"
-      });
+      toast({ title: "Copie Manualmente", description: url });
     }
   };
 
@@ -219,7 +218,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Timer className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Duração Total</p>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Tempo</p>
             <p className="text-xl font-mono font-bold">{formatTotalTime(elapsedSeconds)}</p>
           </div>
         </div>
@@ -228,11 +227,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <Button 
             variant="outline" 
             size="sm" 
-            className="rounded-full gap-2 border-primary/20 hover:bg-primary/5"
+            className="rounded-full gap-2"
             onClick={copyInviteLink}
           >
             {hasCopied ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
-            {hasCopied ? "Copiado" : "Convidar Oponente"}
+            {hasCopied ? "Copiado" : "Convidar"}
           </Button>
         )}
       </div>
@@ -240,21 +239,21 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       <div className="flex items-center gap-4 mb-2">
         <div className={cn(
           "px-4 py-1 rounded-full text-xs font-bold transition-all border",
-          turn === 'w' ? "bg-white text-black border-primary shadow-md scale-110" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
+          turn === 'w' ? "bg-white text-black border-primary shadow-md scale-105" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
         )}>
-          VEZ DAS BRANCAS
+          BRANCAS
         </div>
         <div className={cn(
           "px-4 py-1 rounded-full text-xs font-bold transition-all border",
-          turn === 'b' ? "bg-black text-white border-primary shadow-md scale-110" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
+          turn === 'b' ? "bg-black text-white border-primary shadow-md scale-105" : "bg-accent/50 text-muted-foreground border-transparent opacity-50"
         )}>
-          VEZ DAS PRETAS
+          PRETAS
         </div>
       </div>
 
-      <div className="chess-board border-4 border-primary/20 rounded-2xl overflow-hidden shadow-2xl bg-white/50 backdrop-blur-sm relative">
+      <div className="chess-board relative">
         {isThinking && (
-          <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-50 flex items-center justify-center rounded-lg">
              <div className="bg-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-primary" />
                 <span className="text-xs font-bold uppercase text-primary">IA Pensando...</span>
@@ -286,16 +285,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   )} />
                 )}
                 {piece && (
-                  <div
-                    className={cn(
+                  <div className={cn(
                       "chess-piece text-4xl sm:text-6xl flex items-center justify-center transition-transform",
                       isSelected && "scale-110",
-                      // Peças Brancas (Maiúsculas) vs Pretas (Minúsculas)
-                      piece === piece.toUpperCase() 
-                        ? "text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" 
-                        : "text-slate-900"
-                    )}
-                  >
+                      piece === piece.toUpperCase() ? "text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]" : "text-slate-900"
+                    )}>
                     {PIECE_ICONS[piece]}
                   </div>
                 )}
@@ -305,27 +299,72 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         )}
       </div>
 
-      <div className="flex gap-4">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="text-xs text-muted-foreground gap-2 h-8 hover:bg-primary/5"
-          onClick={async () => {
-            if (confirm("Deseja reiniciar a partida? Todo o progresso será perdido.")) {
-              game.load(INITIAL_FEN);
-              setBoard(chessJsToBoard(game));
-              setTurn('w');
-              setElapsedSeconds(0);
-              setSelected(null);
-              setPossibleMoves([]);
-              await syncToFirestore();
-            }
-          }}
-        >
-          <RotateCcw className="w-3 h-3" />
-          Reiniciar Partida
-        </Button>
+      <div className="flex flex-col gap-4 w-full">
+        {game.isGameOver() && (
+          <div className="flex flex-col gap-2 p-6 bg-primary/5 border border-primary/10 rounded-3xl text-center">
+            <p className="font-bold text-primary flex items-center justify-center gap-2">
+              <Award className="w-5 h-5" />
+              Fim de Partida!
+            </p>
+            <Button 
+              className="mt-2 rounded-xl gap-2 h-12 shadow-lg shadow-primary/20"
+              onClick={handleAnalyzeMatch}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+              {isAnalyzing ? "Analisando..." : "Analisar Minha Performance"}
+            </Button>
+          </div>
+        )}
+
+        <div className="flex justify-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-xs text-muted-foreground gap-2 h-8"
+            onClick={() => {
+              if (confirm("Deseja reiniciar a partida?")) {
+                game.load(INITIAL_FEN);
+                setBoard(chessJsToBoard(game));
+                setTurn('w');
+                setElapsedSeconds(0);
+                setSelected(null);
+                setPossibleMoves([]);
+                syncToFirestore();
+              }
+            }}
+          >
+            <RotateCcw className="w-3 h-3" />
+            Reiniciar
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={!!analysis} onOpenChange={() => setAnalysis(null)}>
+        <DialogContent className="max-w-lg rounded-[2rem] p-8">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-2xl">
+              <Activity className="w-6 h-6 text-primary" />
+              Análise do Professor IA
+            </DialogTitle>
+            <DialogDescription>Insights baseados nos seus movimentos nesta partida.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 mt-4">
+            <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
+              <h4 className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Pontos Fortes</h4>
+              <p className="text-sm text-green-800 leading-relaxed">{analysis?.strengths}</p>
+            </div>
+            <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+              <h4 className="text-xs font-bold text-red-700 uppercase tracking-widest mb-2">Pontos Fracos</h4>
+              <p className="text-sm text-red-800 leading-relaxed">{analysis?.weaknesses}</p>
+            </div>
+            <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+              <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Avaliação Geral</h4>
+              <p className="text-sm font-medium leading-relaxed">{analysis?.overallAssessment}</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
