@@ -1,32 +1,18 @@
 
-/**
- * ChessDuet Security Rules - Versão Simplificada para PvP
- *
- * Objetivo: Permitir que jogadores entrem e joguem via link sem bloqueios de permissão,
- * mantendo apenas a privacidade básica do perfil de usuário.
- */
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // --- REGRAS PARA USUÁRIOS ---
     match /users/{userId} {
-      // Usuários só podem ler e escrever em seus próprios perfis
       allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // --- REGRAS PARA PARTIDAS (GAMES) ---
     match /games/{gameId} {
-      // Permite leitura, criação e atualização para qualquer usuário logado.
-      // Isso garante que quem recebe o link consiga entrar (join) e fazer jogadas (move).
+      // Permite que qualquer usuário logado (incluindo anônimos por link) jogue e atualize o estado
       allow read, create, update: if isSignedIn();
-
-      // Apenas o criador da partida (player1Id) pode deletá-la
       allow delete: if isSignedIn() && resource.data.player1Id == request.auth.uid;
     }
   }

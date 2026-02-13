@@ -6,8 +6,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { PWAInstaller } from '@/components/PWAInstaller';
 
 export const metadata: Metadata = {
-  title: 'ChessDuet - Master the Board',
-  description: 'A clean, modern chess experience for parents and children.',
+  title: 'ChessDuet - Aprenda Brincando',
+  description: 'Uma experiência de xadrez moderna e educativa para pais e filhos.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#2563eb',
+  themeColor: '#1e40af',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="pt-BR">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

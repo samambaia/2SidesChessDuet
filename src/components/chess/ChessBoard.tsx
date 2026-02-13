@@ -41,7 +41,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const { toast } = useToast();
   const boardRef = useRef<HTMLDivElement>(null);
   
-  // Usamos o FEN como fonte da verdade para o estado do jogo no React
   const [game, setGame] = useState(() => new Chess());
   const [board, setBoard] = useState(() => chessJsToBoard(game));
   const [selected, setSelected] = useState<ChessSquare | null>(null);
@@ -71,7 +70,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       if (currentGame.isCheckmate()) {
         message = `As ${currentGame.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram! O Rei não tem mais saída.`;
       } else if (currentGame.isDraw()) {
-        message = "O jogo terminou em empate (Stalemate ou Regras de 50 lances).";
+        message = "O jogo terminou em empate.";
       }
 
       toast({ title, description: message });
@@ -80,7 +79,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return false;
   }, [toast]);
 
-  // Sincroniza com o Firestore (PvP)
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
       const newGame = new Chess(remoteGame.fen);
@@ -89,7 +87,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setTurn(newGame.turn());
       setIsInCheck(newGame.inCheck());
       checkGameOverStatus(newGame);
-      setIsThinking(false); // Libera o tabuleiro se estava esperando
+      setIsThinking(false);
     }
   }, [remoteGame, checkGameOverStatus]);
 
@@ -127,8 +125,23 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setSelected(null);
     setPossibleMoves([]);
     setDragState(null);
-    updateGameState(newGame);
-    toast({ title: "Reiniciando...", description: "Tabuleiro resetado para o início." });
+    
+    // Atualiza local e remoto
+    setGame(newGame);
+    setBoard(chessJsToBoard(newGame));
+    setTurn('w');
+    setIsInCheck(false);
+
+    if (gameId && gameRef) {
+      updateDocumentNonBlocking(gameRef, {
+        fen: INITIAL_FEN,
+        turn: 'w',
+        moves: [],
+        lastUpdated: serverTimestamp()
+      });
+    }
+
+    toast({ title: "Jogo Reiniciado", description: "O tabuleiro voltou para a posição inicial." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -136,16 +149,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setIsThinking(true);
     try {
       const aiResponse = await aiOpponentDifficulty({ fen: currentGame.fen(), difficulty });
-      const moveStr = aiResponse.move.trim().toLowerCase();
-      
       const nextGame = new Chess(currentGame.fen());
       try {
-        nextGame.move(moveStr);
+        nextGame.move(aiResponse.move);
       } catch (e) {
         const legalMoves = nextGame.moves();
         if (legalMoves.length > 0) nextGame.move(legalMoves[0]);
       }
-      
       updateGameState(nextGame);
     } catch (error) {
       console.error("AI Error", error);
@@ -160,14 +170,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [difficulty, mode, gameId, gameRef, checkGameOverStatus]);
 
-  const executeMove = async (from: ChessSquare, to: ChessSquare) => {
+  const executeMove = (from: ChessSquare, to: ChessSquare) => {
     if (isGameOver || isThinking) return;
     
+    // REGRA DE OURO: O Rei nunca pode ser capturado
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
         title: "Movimento Ilegal!", 
-        description: "O Rei não pode ser capturado. Você deve dar Xeque-mate!", 
+        description: "No xadrez, você não captura o Rei. Você deve cercá-lo para dar Xeque-mate!", 
         variant: "destructive" 
       });
       return;
@@ -193,10 +204,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const squareName = getSquareName(r, f);
     const piece = game.get(squareName);
 
-    // Só permite interagir se for a vez do jogador
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
-      // Filtra movimentos que tentariam capturar o Rei (chess.js já faz isso, mas garantimos no UI)
       const moves = game.moves({ square: squareName, verbose: true })
         .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
         .map(m => m.to as ChessSquare);
@@ -212,13 +221,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
 
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } else if (selected && possibleMoves.includes(squareName)) {
+      executeMove(selected, squareName);
     } else {
-      if (selected && possibleMoves.includes(squareName)) {
-        executeMove(selected, squareName);
-      } else {
-        setSelected(null);
-        setPossibleMoves([]);
-      }
+      setSelected(null);
+      setPossibleMoves([]);
     }
   };
 
@@ -264,12 +271,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const isWorkstation = window.location.hostname.includes('cloudworkstations.dev') || window.location.hostname.includes('workstations.cloud');
-    const domain = isWorkstation ? "studio--studio-3509208910-49f15.us-central1.hosted.app" : window.location.host;
-    const protocol = window.location.protocol;
-    const inviteUrl = `${protocol}//${domain}/play?room=${gameId}`;
+    const inviteUrl = `${window.location.origin}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
-    toast({ title: "Link Público Copiado!", description: "Envie este link para sua filha jogar." });
+    toast({ title: "Link de Jogo Copiado!", description: "Envie para sua filha entrar na partida." });
   };
 
   return (
@@ -281,7 +285,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
          </div>
          {gameId && !isGameOver && (
            <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> Convidar Filha
+             <Share2 className="w-3 h-3" /> Convidar
            </Button>
          )}
       </div>
@@ -291,7 +295,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
             <AlertTitle className="font-black uppercase tracking-widest text-xs">CUIDADO! XEQUE!</AlertTitle>
-            <AlertDescription className="text-[10px] font-medium">Seu Rei está sendo atacado! Proteja-o para continuar.</AlertDescription>
+            <AlertDescription className="text-[10px] font-medium">Seu Rei está sendo atacado! Proteja-o agora.</AlertDescription>
           </Alert>
         </div>
       )}
@@ -316,7 +320,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
              {isThinking && (
                <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  <span className="text-sm font-black uppercase tracking-widest">IA Analisando...</span>
+                  <span className="text-sm font-black uppercase tracking-widest">Analisando...</span>
                </div>
              )}
              {isGameOver && (

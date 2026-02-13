@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Download, X, Smartphone, Award } from 'lucide-react';
+import { Download, X, Award } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export function PWAInstaller() {
@@ -12,10 +12,8 @@ export function PWAInstaller() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
-    // Verifica se já está instalado ou em modo standalone
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
-      || (window.navigator as any).standalone 
-      || document.referrer.includes('android-app://');
+      || (window.navigator as any).standalone;
 
     if (isStandalone) return;
 
@@ -25,9 +23,8 @@ export function PWAInstaller() {
       if (isMobile) setShowPrompt(true);
     };
 
-    // Força a exibição do prompt no celular após 3 segundos para garantir visibilidade
     if (isMobile && !isStandalone) {
-      const timer = setTimeout(() => setShowPrompt(true), 3000);
+      const timer = setTimeout(() => setShowPrompt(true), 1500);
       return () => clearTimeout(timer);
     }
 
@@ -42,8 +39,7 @@ export function PWAInstaller() {
       if (outcome === 'accepted') setShowPrompt(false);
       setDeferredPrompt(null);
     } else {
-      // Instrução manual persistente
-      alert('Para instalar o ChessDuet no seu smartphone:\n\nNo iPhone: Toque em "Compartilhar" e depois em "Adicionar à Tela de Início".\nNo Android: Toque nos três pontos do navegador e selecione "Instalar Aplicativo".');
+      alert('Para instalar o ChessDuet:\n\nNo iPhone: Toque em "Compartilhar" e "Adicionar à Tela de Início".\nNo Android: Vá nas opções do navegador e selecione "Instalar Aplicativo".');
     }
   };
 
@@ -65,7 +61,7 @@ export function PWAInstaller() {
           </div>
           <div className="flex-1">
             <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Instalar ChessDuet</h3>
-            <p className="text-[11px] opacity-90 mt-1 font-bold">Jogue como um app real e sem interrupções!</p>
+            <p className="text-[11px] opacity-90 mt-1 font-bold">Jogue como um app nativo e sem interrupções!</p>
           </div>
         </div>
 
