@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Chess, Square as ChessSquare } from 'chess.js';
 import { cn } from '@/lib/utils';
 import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareName } from '@/lib/chess-utils';
@@ -216,11 +216,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const domain = window.location.hostname.includes('cloudworkstations.dev') || 
-                  window.location.hostname.includes('workstations.cloud')
-      ? 'https://studio--studio-3509208910-49f15.us-central1.hosted.app' 
-      : window.location.origin;
-
+    const domain = "https://studio--studio-3509208910-49f15.us-central1.hosted.app";
     const inviteUrl = `${domain}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
     
@@ -309,10 +305,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   handleSquareClick(r, f);
                 }}
                 className={cn(
-                  "chess-square h-full w-full select-none touch-none",
+                  "chess-square h-full w-full select-none touch-none cursor-pointer",
                   isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
                   isSelected && "bg-[#F5F682]",
-                  isPossible && "cursor-pointer",
                   isKingInCheck && "bg-destructive/60 animate-pulse"
                 )}
               >

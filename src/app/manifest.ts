@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',
-    theme_color: '#215 80% 40%',
+    theme_color: '#2563eb',
     icons: [
       {
         src: 'https://picsum.photos/seed/chess-pro/192/192',
