@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, History, ShieldAlert } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, History, ShieldAlert, Trophy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
@@ -68,68 +68,22 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       if (game.isCheckmate()) {
         const winner = game.turn() === 'w' ? 'Pretas' : 'Brancas';
         title = "XEQUE-MATE!";
-        message = `As ${winner} venceram a partida cercado o Rei!`;
+        message = `As ${winner} venceram! O Rei não tem mais saída.`;
       } else if (game.isDraw()) {
         title = "Empate!";
-        message = game.isStalemate() 
-          ? "Afogamento: O jogador não tem jogadas legais mas não está em xeque."
-          : "A partida terminou empatada por regras do xadrez.";
+        message = "A partida terminou em empate.";
       }
 
       toast({
         title,
         description: message,
-        variant: game.isCheckmate() ? "default" : "secondary",
+        variant: "default",
       });
       localStorage.removeItem(STORAGE_KEY);
       return true;
     }
     return false;
   }, [game, toast]);
-
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!game.isGameOver() && game.history().length > 0) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [game]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && !gameId) {
-      const parsed = JSON.parse(saved);
-      if (parsed.fen !== INITIAL_FEN) {
-        setSavedGameData(parsed);
-        setShowResumeDialog(true);
-      }
-    }
-  }, [gameId]);
-
-  useEffect(() => {
-    if (!gameId && !isGameOver) {
-      const state = {
-        fen: game.fen(),
-        mode,
-        elapsedSeconds,
-        difficulty,
-        timestamp: Date.now()
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }
-  }, [board, turn, mode, difficulty, elapsedSeconds, gameId, game, isGameOver]);
-
-  useEffect(() => {
-    if (gameId && gameRef && remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
-      updateDocumentNonBlocking(gameRef, {
-        player2Id: user.uid,
-        lastUpdated: serverTimestamp()
-      });
-    }
-  }, [remoteGame, user, gameRef, gameId]);
 
   useEffect(() => {
     if (remoteGame?.fen) {
@@ -181,40 +135,20 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
-      let move = null;
       try {
-        move = game.move(moveStr);
+        game.move(moveStr);
       } catch (e) {
         const legalMoves = game.moves();
-        if (legalMoves.length > 0) {
-          game.move(legalMoves[0]);
-          move = true;
-        }
+        if (legalMoves.length > 0) game.move(legalMoves[0]);
       }
       
-      if (move) {
-        setBoard(chessJsToBoard(game));
-        setTurn(game.turn());
-        const inCheck = game.inCheck();
-        setIsInCheck(inCheck);
-        
-        if (inCheck && !game.isGameOver()) {
-          toast({
-            title: "Cuidado!",
-            description: "A IA colocou você em XEQUE!",
-            variant: "destructive"
-          });
-        }
-        
-        syncToFirestore();
-        checkGameOverStatus();
-      }
+      setBoard(chessJsToBoard(game));
+      setTurn(game.turn());
+      setIsInCheck(game.inCheck());
+      syncToFirestore();
+      checkGameOverStatus();
     } catch (error: any) {
-      toast({ 
-        title: "Erro na IA", 
-        description: "Não foi possível obter o movimento da IA.",
-        variant: "destructive"
-      });
+      toast({ title: "IA Ocupada", description: "Tentando novamente...", variant: "destructive" });
     } finally {
       setIsThinking(false);
     }
@@ -224,43 +158,33 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const from = fromOverride || selected;
     if (!from || isGameOver) return;
     
-    const uci = `${from}${to}`;
-
-    if (mode === 'learning') {
-      setIsThinking(true);
-      try {
-        const feedback = await getMoveFeedback({ currentBoardState: game.fen(), userMove: uci });
-        if (!feedback.isLegalMove) {
-          toast({ title: "Movimento Inválido", description: feedback.feedback, variant: "destructive" });
-          setSelected(null);
-          setPossibleMoves([]);
-          return;
-        }
-      } catch (err) {
-      } finally {
-        setIsThinking(false);
-      }
+    // VERIFICAÇÃO DE REGRAS: Impedir captura de Rei (Ilegal)
+    const targetPiece = game.get(to);
+    if (targetPiece && targetPiece.type === 'k') {
+      toast({ 
+        title: "Movimento Ilegal!", 
+        description: "O Rei nunca pode ser capturado. Você deve dar Xeque-mate.", 
+        variant: "destructive" 
+      });
+      setSelected(null);
+      setPossibleMoves([]);
+      return;
     }
 
     try {
       const move = game.move({ from, to, promotion: 'q' });
-      if (!move) return;
+      if (!move) {
+        toast({ title: "Movimento Inválido", description: "O Rei ficaria em perigo!", variant: "destructive" });
+        setSelected(null);
+        setPossibleMoves([]);
+        return;
+      }
 
       setBoard(chessJsToBoard(game));
       setSelected(null);
       setPossibleMoves([]);
       setTurn(game.turn());
-      
-      const inCheck = game.inCheck();
-      setIsInCheck(inCheck);
-      
-      if (inCheck && !game.isGameOver()) {
-        toast({
-          title: "XEQUE!",
-          description: `O Rei das ${game.turn() === 'w' ? 'Brancas' : 'Pretas'} está em perigo!`,
-        });
-      }
-
+      setIsInCheck(game.inCheck());
       syncToFirestore();
 
       if (!checkGameOverStatus()) {
@@ -269,7 +193,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         }
       }
     } catch (e) {
-      toast({ title: "Ops!", description: "Movimento ilegal. O Rei nunca pode ser capturado ou deixado em xeque.", variant: "destructive" });
+      toast({ title: "Ilegal!", description: "Siga as regras oficiais do xadrez.", variant: "destructive" });
     }
   };
 
@@ -291,33 +215,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
-  const handleDragStart = (e: React.DragEvent, square: ChessSquare) => {
-    if (isThinking || isGameOver) {
-      e.preventDefault();
-      return;
-    }
-    const piece = game.get(square);
-    if (piece && piece.color === game.turn()) {
-      setSelected(square);
-      const moves = game.moves({ square: square, verbose: true });
-      setPossibleMoves(moves.map(m => m.to));
-      e.dataTransfer.setData('fromSquare', square);
-      e.dataTransfer.effectAllowed = 'move';
-    } else {
-      e.preventDefault();
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
-
-  const handleDrop = (e: React.DragEvent, toSquare: ChessSquare) => {
-    e.preventDefault();
-    const fromSquare = e.dataTransfer.getData('fromSquare') as ChessSquare;
-    if (fromSquare && fromSquare !== toSquare) {
-      executeMove(toSquare, fromSquare);
-    }
-  };
-
   const handleAnalyzeMatch = async () => {
     setIsAnalyzing(true);
     try {
@@ -332,33 +229,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const hostname = window.location.hostname;
-    const isPrivateEnv = hostname.includes('workstations.cloud') || 
-                        hostname.includes('cloudworkstations.dev') || 
-                        hostname === 'localhost';
-    
-    const publicBaseUrl = "https://studio--studio-3509208910-49f15.us-central1.hosted.app/play";
-    const baseUrl = isPrivateEnv ? publicBaseUrl : (window.location.origin + window.location.pathname);
-    const inviteUrl = `${baseUrl}?room=${gameId}`;
-    
-    if (navigator.share) {
-      try {
-        await navigator.share({ 
-          title: 'ChessDuet - Jogue Comigo!', 
-          text: 'Entra aí no meu jogo de xadrez!',
-          url: inviteUrl 
-        });
-      } catch (err) {
-        copyToClipboard(inviteUrl);
-      }
-    } else {
-      copyToClipboard(inviteUrl);
-    }
-  };
-
-  const copyToClipboard = async (text: string) => {
+    const inviteUrl = `https://studio--studio-3509208910-49f15.us-central1.hosted.app/play?room=${gameId}`;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(inviteUrl);
       setHasCopied(true);
       toast({ title: "Link Copiado!", description: "Envie este link para sua filha." });
       setTimeout(() => setHasCopied(false), 2000);
@@ -373,105 +246,67 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setElapsedSeconds(savedGameData.elapsedSeconds || 0);
       setIsInCheck(game.inCheck());
       checkGameOverStatus();
-      toast({ title: "Jogo Retomado", description: "Continuando de onde você parou." });
     }
     setShowResumeDialog(false);
   };
 
-  const handleDiscardSavedGame = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setSavedGameData(null);
-    setShowResumeDialog(false);
-    game.load(INITIAL_FEN);
-    setBoard(chessJsToBoard(game));
-    setTurn('w');
-    setIsInCheck(false);
-    setIsGameOver(false);
-  };
-
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px] animate-in fade-in duration-700">
+      <div className="w-full flex justify-between items-center px-4 mb-2">
+         <div className="flex items-center gap-2">
+            <Timer className="w-4 h-4 text-primary" />
+            <span className="font-mono font-bold text-lg">{formatTotalTime(elapsedSeconds)}</span>
+         </div>
+         {gameId && !isGameOver && (
+           <Button variant="outline" size="sm" className="rounded-full gap-2" onClick={handleInvite}>
+             <Share2 className="w-3 h-3" /> Convite
+           </Button>
+         )}
+      </div>
+
       {isInCheck && !isGameOver && (
         <div className="w-full animate-bounce">
-          <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg">
+          <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
-            <AlertTitle className="font-black uppercase tracking-widest text-sm">REI EM XEQUE!</AlertTitle>
-            <AlertDescription className="text-xs font-medium">
-              O Rei está sob ataque! Você deve movê-lo ou protegê-lo agora.
-            </AlertDescription>
+            <AlertTitle className="font-black uppercase tracking-widest text-xs">CUIDADO! XEQUE!</AlertTitle>
+            <AlertDescription className="text-[10px] font-medium">Proteja seu Rei agora!</AlertDescription>
           </Alert>
         </div>
       )}
-
-      {isGameOver && (
-        <div className="w-full">
-          <Alert className="bg-amber-100 border-amber-300 rounded-2xl border-2 shadow-lg">
-            <Award className="h-5 w-5 text-amber-700" />
-            <AlertTitle className="font-black uppercase tracking-widest text-sm text-amber-900">PARTIDA ENCERRADA</AlertTitle>
-            <AlertDescription className="text-xs font-medium text-amber-800">
-              O jogo terminou. Veja a análise abaixo para aprender com seus movimentos.
-            </AlertDescription>
-          </Alert>
-        </div>
-      )}
-
-      <div className="w-full flex items-center justify-between px-6 py-4 bg-accent/20 rounded-[1.5rem] border border-accent/30 shadow-md backdrop-blur-sm">
-        <div className="flex items-center gap-4">
-          <div className="bg-primary/10 p-2.5 rounded-xl">
-            <Timer className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">Tempo</p>
-            <p className="text-2xl font-mono font-bold tracking-tight">{formatTotalTime(elapsedSeconds)}</p>
-          </div>
-        </div>
-
-        {gameId && !isGameOver && (
-          <Button 
-            variant="default" 
-            size="sm" 
-            className="rounded-full gap-2 px-6 h-11 font-bold shadow-lg shadow-primary/25"
-            onClick={handleInvite}
-          >
-            {hasCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-            {hasCopied ? "Copiado" : "Convidar Filha"}
-          </Button>
-        )}
-      </div>
 
       <div className="flex items-center gap-6 mb-2">
         <div className={cn(
           "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
-          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40",
-          isInCheck && turn === 'w' && "border-destructive text-destructive bg-destructive/5 animate-pulse"
+          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
         )}>BRANCAS</div>
         <div className={cn(
           "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
-          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40",
-          isInCheck && turn === 'b' && "border-destructive text-destructive bg-destructive/5 animate-pulse"
+          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
         )}>PRETAS</div>
       </div>
 
-      <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/5">
+      <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800">
         {(isThinking || isGameOver) && (
-          <div className={cn(
-            "absolute inset-0 z-50 flex items-center justify-center",
-            isThinking ? "bg-slate-900/10 backdrop-blur-[2px]" : "bg-slate-900/40 backdrop-blur-[1px]"
-          )}>
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in">
              {isThinking && (
-               <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-100 animate-in zoom-in-95">
+               <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  <span className="text-sm font-black uppercase tracking-widest text-primary">IA Pensando...</span>
+                  <span className="text-sm font-black uppercase tracking-widest">IA Analisando...</span>
                </div>
              )}
              {isGameOver && (
-               <div className="bg-white/95 p-8 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95">
-                  <Award className="w-12 h-12 text-amber-500 mx-auto mb-2" />
-                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Partida Finalizada</h2>
-                  <p className="text-sm text-muted-foreground mt-2 mb-6">Explore o feedback da IA abaixo.</p>
-                  <Button onClick={handleAnalyzeMatch} className="rounded-full w-full h-12 gap-2">
-                    <Activity className="w-4 h-4" /> Ver Análise
-                  </Button>
+               <div className="bg-white/95 p-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
+                  <Trophy className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">FIM DE JOGO</h2>
+                  <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Parabéns pela partida!</p>
+                  <div className="grid gap-2">
+                    <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black">
+                      <Activity className="w-4 h-4" /> Ver Feedback IA
+                    </Button>
+                    <Button variant="ghost" onClick={() => window.location.reload()} className="text-xs">
+                      Nova Partida
+                    </Button>
+                  </div>
                </div>
              )}
           </div>
@@ -483,7 +318,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             const isLight = (r + f) % 2 === 0;
             const isSelected = selected === squareName;
             const isPossible = possibleMoves.includes(squareName);
-            
             const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' && 
                                ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
 
@@ -491,12 +325,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               <div
                 key={`${r}-${f}`}
                 onClick={() => handleSquareClick(r, f)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, squareName)}
                 className={cn(
                   "chess-square",
                   isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
-                  isSelected && "bg-[#F5F682]/80",
+                  isSelected && "bg-[#F5F682]",
                   isPossible && "cursor-pointer",
                   isKingInCheck && "bg-destructive/60 animate-pulse"
                 )}
@@ -504,17 +336,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 {isPossible && (
                   <div className={cn(
                     "absolute z-20 rounded-full",
-                    piece ? "inset-0 border-[6px] border-black/10" : "w-5 h-5 bg-black/10"
+                    piece ? "inset-0 border-[4px] border-black/10" : "w-4 h-4 bg-black/10"
                   )} />
                 )}
                 {piece && (
-                  <div 
-                    draggable={!isGameOver}
-                    onDragStart={(e) => handleDragStart(e, squareName)}
-                    className={cn(
-                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all active:scale-125 touch-none select-none",
-                      isSelected && "scale-110 rotate-3",
-                      piece === piece.toUpperCase() ? "text-white drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]" : "text-slate-900"
+                  <div className={cn(
+                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-transform active:scale-125",
+                      piece === piece.toUpperCase() ? "text-white drop-shadow-md" : "text-slate-900"
                     )}>
                     {PIECE_ICONS[piece]}
                   </div>
@@ -525,90 +353,40 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         )}
       </div>
 
-      <div className="flex flex-col gap-4 w-full">
-        {isGameOver && (
-          <div className="flex flex-col gap-4 p-8 bg-primary/10 border-2 border-primary/20 rounded-[2rem] text-center animate-in zoom-in-95 duration-500 shadow-xl">
-            <Award className="w-10 h-10 text-primary mx-auto" />
-            <h3 className="text-xl font-black text-primary uppercase">Fim de Partida</h3>
-            <Button 
-              className="rounded-2xl gap-3 h-14 font-bold shadow-xl shadow-primary/25"
-              onClick={handleAnalyzeMatch}
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
-              {isAnalyzing ? "Analisando..." : "Feedback do Tutor IA"}
-            </Button>
-          </div>
-        )}
-
-        <div className="flex justify-center mt-2">
+      <div className="w-full flex justify-center gap-4 mt-4">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest gap-2"
+            className="text-[10px] font-black uppercase tracking-widest gap-2"
             onClick={() => {
-              if (confirm("Reiniciar partida? Todo o progresso atual será perdido.")) {
-                game.load(INITIAL_FEN);
-                setBoard(chessJsToBoard(game));
-                setTurn('w');
-                setElapsedSeconds(0);
-                setSelected(null);
-                setPossibleMoves([]);
-                setIsInCheck(false);
-                setIsGameOver(false);
-                syncToFirestore();
-                localStorage.removeItem(STORAGE_KEY);
+              if (confirm("Reiniciar partida?")) {
+                window.location.reload();
               }
             }}
           >
-            <RotateCcw className="w-3 h-3" />
-            Reiniciar Jogo
+            <RotateCcw className="w-3 h-3" /> Reiniciar Jogo
           </Button>
-        </div>
       </div>
-
-      <Dialog open={showResumeDialog} onOpenChange={setShowResumeDialog}>
-        <DialogContent className="max-w-md rounded-[2.5rem] p-10">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3 text-2xl font-black">
-              <History className="w-6 h-6 text-primary" />
-              Retomar Jogo?
-            </DialogTitle>
-            <DialogDescription>
-              Detectamos uma partida salva. Deseja continuar de onde parou ou começar uma nova?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 mt-6">
-            <Button onClick={handleResumeGame} className="h-14 rounded-2xl font-bold text-lg">
-              Continuar Partida
-            </Button>
-            <Button variant="outline" onClick={handleDiscardSavedGame} className="h-12 rounded-2xl">
-              Começar de Novo
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!analysis} onOpenChange={() => setAnalysis(null)}>
         <DialogContent className="max-w-xl rounded-[2.5rem] p-10">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-3xl font-black">
-              <Activity className="w-8 h-8 text-primary" />
-              Análise do Tutor
+              <Activity className="w-8 h-8 text-primary" /> Tutor IA
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-6 mt-8">
-            <div className="p-6 bg-green-50 rounded-[1.5rem] border border-green-100/50">
-              <h4 className="text-[11px] font-black text-green-700 uppercase mb-3">PONTOS FORTES</h4>
-              <p className="text-base text-green-800 font-medium">{analysis?.strengths}</p>
+            <div className="p-6 bg-green-50 rounded-2xl border border-green-100">
+              <h4 className="text-[11px] font-black text-green-700 uppercase mb-2">PONTOS FORTES</h4>
+              <p className="text-sm text-green-800">{analysis?.strengths}</p>
             </div>
-            <div className="p-6 bg-amber-50 rounded-[1.5rem] border border-amber-100/50">
-              <h4 className="text-[11px] font-black text-amber-700 uppercase mb-3">OPORTUNIDADES</h4>
-              <p className="text-base text-amber-800 font-medium">{analysis?.weaknesses}</p>
+            <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
+              <h4 className="text-[11px] font-black text-amber-700 uppercase mb-2">OPORTUNIDADES</h4>
+              <p className="text-sm text-amber-800">{analysis?.weaknesses}</p>
             </div>
-            <div className="p-6 bg-primary/5 rounded-[1.5rem] border border-primary/10">
-              <h4 className="text-[11px] font-black text-primary uppercase mb-3">VEREDITO</h4>
-              <p className="text-lg font-bold text-slate-800">{analysis?.overallAssessment}</p>
+            <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10">
+              <h4 className="text-[11px] font-black text-primary uppercase mb-2">VEREDITO</h4>
+              <p className="text-lg font-bold">{analysis?.overallAssessment}</p>
             </div>
           </div>
         </DialogContent>

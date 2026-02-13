@@ -7,7 +7,7 @@ import { PWAInstaller } from '@/components/PWAInstaller';
 
 export const metadata: Metadata = {
   title: 'ChessDuet - Master the Board',
-  description: 'A clean, modern chess experience powered by AI.',
+  description: 'A clean, modern chess experience for parents and children.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -34,7 +34,7 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet" />
         <link rel="icon" href="https://picsum.photos/seed/chess-pro/32/32" />
       </head>
       <body className="font-body antialiased">
