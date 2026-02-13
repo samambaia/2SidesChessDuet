@@ -2,11 +2,10 @@
  * ChessDuet Security Rules
  *
  * Core Philosophy:
- * This ruleset implements a hybrid security model tailored for a peer-to-peer chess experience. 
  * 1. User Privacy: Strict ownership-based access for user profile data.
- * 2. Collaborative Gameplay: Shared access for GameRooms and Games based on participant IDs.
- * 3. Discovery & Joining: GameRooms are readable to allow players to join via shared IDs/links, 
- *    but write operations are strictly limited to the participating players.
+ * 2. Collaborative Gameplay: Shared access for Games based on participant IDs.
+ * 3. Discovery: Allow 'get' for any signed-in user to enable joining via link and 
+ *    prevent errors when a document is being initialized.
  */
 
 rules_version = '2';
@@ -24,12 +23,12 @@ service cloud.firestore {
     }
 
     /** 
-     * @description Checks if the authenticated user is one of the two players defined in the document data.
+     * @description Checks if the authenticated user is one of the two players.
      */
     function isParticipant(data) {
       return isSignedIn() && data != null && (
-        (data.player1Id != null && request.auth.uid == data.player1Id) || 
-        (data.player2Id != null && request.auth.uid == data.player2Id)
+        (data.get('player1Id', null) == request.auth.uid) || 
+        (data.get('player2Id', null) == request.auth.uid)
       );
     }
 
@@ -42,36 +41,27 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
     }
 
-    /**
-     * @description Rules for Games. Secures the actual gameplay data.
-     * We allow 'get' if the room is open (player2Id is null) to allow joining.
-     */
     match /games/{gameId} {
-      // Allow reading if participant OR if the game is open for a second player
-      allow get: if isSignedIn() && (
-        isParticipant(resource.data) || 
-        (resource != null && resource.data.player2Id == null)
-      );
+      // Allow 'get' for any signed-in user. 
+      // This is crucial for joining via link and prevents permission errors 
+      // if the app tries to read the doc before the 'create' is fully indexed.
+      allow get: if isSignedIn();
       
+      // Listing is restricted to games where the user is a participant.
       allow list: if isSignedIn() && isParticipant(resource.data);
       
-      // Allow creation if the user sets themselves as player1
+      // Allow creation if the user sets themselves as player1.
       allow create: if isSignedIn() 
-        && request.resource.data.player1Id == request.auth.uid
-        && request.resource.data.id == gameId;
+        && request.resource.data.get('player1Id', null) == request.auth.uid
+        && request.resource.data.get('id', null) == gameId;
 
-      // Allow updates for moves if participant, or for joining if player2 slot is empty
+      // Allow updates for moves if participant, or for joining if player2 slot is empty.
       allow update: if isSignedIn() && resource != null && (
         isParticipant(resource.data) || 
-        (resource.data.player2Id == null && request.resource.data.player2Id == request.auth.uid)
+        (resource.data.get('player2Id', null) == null && request.resource.data.get('player2Id', null) == request.auth.uid)
       );
 
-      allow delete: if isSignedIn() && resource != null && resource.data.player1Id == request.auth.uid;
-    }
-
-    // Deprecated path (preserved for structure consistency)
-    match /game_rooms/{gameRoomId} {
-      allow read, write: if isSignedIn();
+      allow delete: if isSignedIn() && resource != null && resource.data.get('player1Id', null) == request.auth.uid;
     }
   }
 }
