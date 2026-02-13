@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -145,7 +146,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
-      // Attempt to apply the move. chess.js .move() returns null if invalid
       const move = game.move(moveStr);
       
       if (move) {
@@ -153,8 +153,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setTurn(game.turn());
         syncToFirestore();
       } else {
-        // Fallback: If AI suggested an illegal move, pick a random legal one 
-        // to avoid freezing the game, but warn the user.
         console.warn("IA sugeriu movimento inválido:", moveStr);
         const legalMoves = game.moves();
         if (legalMoves.length > 0) {
@@ -214,7 +212,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         toast({ title: "Fim de Jogo", description: winMessage });
         localStorage.removeItem(STORAGE_KEY);
       } else if (mode === 'ai' && game.turn() === 'b') {
-        // Reduced delay for a tighter feel
         setTimeout(triggerAiMove, 500);
       }
     } catch (e) {
@@ -281,10 +278,21 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
+    // Detecta se estamos no ambiente de produção ou de teste
+    const isLocal = window.location.hostname.includes('workstations.cloud');
     const publicUrl = `https://studio-3509208910-49f15.firebaseapp.com/play?room=${gameId}`;
+    
+    if (isLocal) {
+       toast({ 
+         title: "Atenção!", 
+         description: "O link de teste não funcionará no celular dela. Clique em PUBLISH no topo do editor para ativar o link público.",
+         duration: 5000 
+       });
+    }
+
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'ChessDuet', url: publicUrl });
+        await navigator.share({ title: 'ChessDuet - Jogue Comigo!', url: publicUrl });
       } catch (err) {
         copyToClipboard(publicUrl);
       }
@@ -297,7 +305,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       await navigator.clipboard.writeText(text);
       setHasCopied(true);
-      toast({ title: "Copiado!" });
+      toast({ title: "Link Público Copiado!", description: "Envie este link para sua filha." });
       setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {}
   };
@@ -329,10 +337,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
             Status da Publicação
-            <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700">Aguardando Publish</Badge>
+            <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700">Ação Necessária</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Certifique-se de clicar em <strong>Publish</strong> no topo do editor para que o link funcione externamente.
+            Para sua filha entrar no jogo, você <strong>precisa</strong> clicar no botão <strong>PUBLISH</strong> no topo da tela. A primeira vez pode levar alguns minutos, mas o link `...firebaseapp.com` só funcionará após isso.
           </AlertDescription>
         </Alert>
       )}
@@ -356,7 +364,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             onClick={handleInvite}
           >
             {hasCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-            {hasCopied ? "Copiado" : "Convidar"}
+            {hasCopied ? "Copiado" : "Convidar Filha"}
           </Button>
         )}
       </div>

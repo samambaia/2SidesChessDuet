@@ -21,6 +21,9 @@ import {
 import { INITIAL_FEN } from '@/lib/chess-utils';
 import { useToast } from '@/hooks/use-toast';
 
+// Força a página a ser dinâmica, evitando que o build do Next.js trave tentando pre-renderizar
+export const dynamic = 'force-dynamic';
+
 function PlayContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
