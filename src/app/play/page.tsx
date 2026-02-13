@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { ChessBoard } from '@/components/chess/ChessBoard';
 import { Button } from '@/components/ui/button';
 import { Settings, Brain, Users, BookOpen, Zap, ChevronLeft, Loader2 } from 'lucide-react';
@@ -21,7 +21,7 @@ import {
 import { INITIAL_FEN } from '@/lib/chess-utils';
 import { useToast } from '@/hooks/use-toast';
 
-export default function PlayPage() {
+function PlayContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const auth = useAuth();
@@ -211,5 +211,17 @@ export default function PlayPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function PlayPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    }>
+      <PlayContent />
+    </Suspense>
   );
 }
