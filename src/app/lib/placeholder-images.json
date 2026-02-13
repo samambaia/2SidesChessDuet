@@ -3,19 +3,19 @@
   "placeholderImages": [
     {
       "id": "hero-chess",
-      "description": "Um tabuleiro de xadrez profissional focado no Rei",
+      "description": "A professional chess board focused on the King",
       "imageUrl": "https://picsum.photos/seed/chess-pro/1200/800",
       "imageHint": "chess piece"
     },
     {
       "id": "ai-feature",
-      "description": "Representação abstrata de inteligência artificial",
+      "description": "Abstract representation of artificial intelligence",
       "imageUrl": "https://picsum.photos/seed/ai-mind/600/400",
       "imageHint": "artificial intelligence"
     },
     {
       "id": "social-play",
-      "description": "Pessoas jogando xadrez de forma amigável",
+      "description": "People playing chess in a friendly way",
       "imageUrl": "https://picsum.photos/seed/chess-friends/600/400",
       "imageHint": "chess players"
     }

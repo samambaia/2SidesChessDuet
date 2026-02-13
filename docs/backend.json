@@ -5,20 +5,20 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Representa um usuário do ChessDuet.",
+      "description": "Represents a ChessDuet user.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "ID único do usuário (UID do Firebase).",
+          "description": "Unique user ID (Firebase UID).",
           "format": "uuid"
         },
         "username": {
           "type": "string",
-          "description": "Nome de exibição."
+          "description": "Display name."
         },
         "email": {
           "type": "string",
-          "description": "E-mail do usuário.",
+          "description": "User email.",
           "format": "email"
         }
       },
@@ -32,35 +32,35 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Game",
       "type": "object",
-      "description": "Representa uma partida de xadrez.",
+      "description": "Represents a chess match.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "ID único da partida."
+          "description": "Unique match ID."
         },
         "fen": {
           "type": "string",
-          "description": "Estado do tabuleiro em notação FEN."
+          "description": "Board state in FEN notation."
         },
         "turn": {
           "type": "string",
-          "description": "Vez de quem jogar ('w' ou 'b')."
+          "description": "Current player's turn ('w' or 'b')."
         },
         "player1Id": {
           "type": "string",
-          "description": "UID do jogador das brancas."
+          "description": "UID of the player with white pieces."
         },
         "player2Id": {
           "type": "string",
-          "description": "UID do jogador das pretas (nulo se aguardando)."
+          "description": "UID of the player with black pieces (null if waiting)."
         },
         "mode": {
           "type": "string",
-          "description": "Modo de jogo: 'ai', 'pvp' ou 'learning'."
+          "description": "Game mode: 'ai', 'pvp', or 'learning'."
         },
         "lastUpdated": {
           "type": "string",
-          "description": "Data da última jogada.",
+          "description": "Date of the last move.",
           "format": "date-time"
         }
       },
@@ -88,7 +88,7 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Perfis de usuário."
+          "description": "User profiles."
         }
       },
       {
@@ -98,7 +98,7 @@
           "schema": {
             "$ref": "#/backend/entities/Game"
           },
-          "description": "Dados das partidas em tempo real."
+          "description": "Real-time match data."
         }
       }
     ]

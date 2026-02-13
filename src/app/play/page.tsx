@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -112,14 +113,15 @@ function PlayContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      {/* Background Image with optimized opacity for watermark effect */}
+      {/* Background Watermark Image */}
       {bgImage && (
-        <div className="absolute inset-0 z-0 opacity-[0.07] pointer-events-none">
+        <div className="absolute inset-0 z-0 opacity-10 pointer-events-none">
           <Image
             src={bgImage.imageUrl}
             alt="Chess background"
             fill
-            className="object-cover grayscale"
+            className="object-cover grayscale blur-[1px]"
+            priority
             data-ai-hint="chess board"
           />
         </div>
