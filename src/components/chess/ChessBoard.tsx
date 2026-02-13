@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History, QrCode } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
@@ -153,7 +153,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setTurn(game.turn());
         syncToFirestore();
       } else {
-        console.warn("IA sugeriu movimento inválido:", moveStr);
         const legalMoves = game.moves();
         if (legalMoves.length > 0) {
           game.move(legalMoves[Math.floor(Math.random() * legalMoves.length)]);
@@ -278,16 +277,21 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname.includes('workstations.cloud');
-    // Usa o endereço atual da página para gerar o link, garantindo que funcione em qualquer domínio autorizado
-    const currentBaseUrl = window.location.origin + window.location.pathname;
-    const publicUrl = `${currentBaseUrl}?room=${gameId}`;
+    const isWorkstation = window.location.hostname.includes('workstations.cloud') || window.location.hostname === 'localhost';
     
-    if (isLocal) {
+    // O domínio público oficial do seu app (App Hosting)
+    const publicBaseUrl = "https://studio--studio-3509208910-49f15.us-central1.hosted.app/play";
+    
+    // Se estiver no ambiente de teste, usamos o link público para o convite.
+    // Se já estiver no público, usamos o endereço atual.
+    const baseUrl = isWorkstation ? publicBaseUrl : (window.location.origin + window.location.pathname);
+    const inviteUrl = `${baseUrl}?room=${gameId}`;
+    
+    if (isWorkstation) {
        toast({ 
-         title: "Atenção!", 
-         description: "O link de teste (workstations) não funcionará no celular dela. Clique em PUBLISH para ativar o link público.",
-         duration: 8000 
+         title: "Gerando Link Público", 
+         description: "Usando o endereço oficial para evitar erros de permissão no celular dela.",
+         duration: 5000 
        });
     }
 
@@ -296,13 +300,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         await navigator.share({ 
           title: 'ChessDuet - Jogue Comigo!', 
           text: 'Entra aí no meu jogo de xadrez!',
-          url: publicUrl 
+          url: inviteUrl 
         });
       } catch (err) {
-        copyToClipboard(publicUrl);
+        copyToClipboard(inviteUrl);
       }
     } else {
-      copyToClipboard(publicUrl);
+      copyToClipboard(inviteUrl);
     }
   };
 
@@ -341,11 +345,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 shadow-sm">
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Link de Convite Ativo
+            Domínio Público Ativo
             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Online</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Se você já clicou em <strong>PUBLISH</strong>, o link funcionará perfeitamente no celular da sua filha.
+            Para sua filha entrar sem erro 401, certifique-se de que o link de convite comece com <strong>studio--studio...</strong> e que você já clicou em <strong>PUBLISH</strong>.
           </AlertDescription>
         </Alert>
       )}
