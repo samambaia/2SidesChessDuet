@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History, ShieldAlert, Tally5 } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, History, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
@@ -22,7 +22,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from '@/components/ui/badge';
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
@@ -60,7 +59,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Check Game Over status
   const checkGameOverStatus = useCallback(() => {
     if (game.isGameOver()) {
       setIsGameOver(true);
@@ -187,7 +185,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       try {
         move = game.move(moveStr);
       } catch (e) {
-        // Fallback para movimento legal se a IA falhar
         const legalMoves = game.moves();
         if (legalMoves.length > 0) {
           game.move(legalMoves[0]);
@@ -394,19 +391,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px] animate-in fade-in duration-700">
-      {gameId && (
-        <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 shadow-sm">
-          <AlertCircle className="h-4 w-4 text-primary" />
-          <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Sala Online
-            <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Ativa</Badge>
-          </AlertTitle>
-          <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Convide alguém para jogar usando o botão abaixo.
-          </AlertDescription>
-        </Alert>
-      )}
-
       {isInCheck && !isGameOver && (
         <div className="w-full animate-bounce">
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg">
@@ -500,7 +484,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             const isSelected = selected === squareName;
             const isPossible = possibleMoves.includes(squareName);
             
-            // Highlight the King if in check
             const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' && 
                                ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
 

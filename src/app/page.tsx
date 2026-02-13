@@ -5,12 +5,13 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { Zap, LogOut, User as UserIcon, Loader2 } from 'lucide-react';
+import { LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { useUser, useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useRouter } from 'next/navigation';
+import { ChessLogo } from '@/components/ChessLogo';
 
 export default function Home() {
   const { user, isUserLoading } = useUser();
@@ -37,8 +38,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen">
       <header className="px-6 h-16 flex items-center border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
         <Link className="flex items-center" href="/">
-          <Zap className="h-5 w-5 text-primary mr-2" />
-          <span className="font-bold text-xl">ChessDuet</span>
+          <ChessLogo />
         </Link>
         <nav className="ml-auto flex items-center gap-6">
           <Link 

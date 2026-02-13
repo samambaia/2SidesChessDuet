@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { ChessBoard } from '@/components/chess/ChessBoard';
 import { Button } from '@/components/ui/button';
-import { Settings, Brain, Users, BookOpen, Zap, ChevronLeft, Loader2 } from 'lucide-react';
+import { Settings, Brain, Users, BookOpen, ChevronLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, useFirestore } from '@/firebase';
@@ -20,8 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import { INITIAL_FEN } from '@/lib/chess-utils';
 import { useToast } from '@/hooks/use-toast';
+import { ChessLogo } from '@/components/ChessLogo';
 
-// Força a página a ser dinâmica, evitando que o build do Next.js trave tentando pre-renderizar
 export const dynamic = 'force-dynamic';
 
 function PlayContent() {
@@ -112,8 +112,7 @@ function PlayContent() {
       <header className="px-6 h-16 flex items-center border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
         <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <ChevronLeft className="h-4 w-4" />
-          <Zap className="h-5 w-5 text-primary" />
-          <span className="font-bold text-xl">ChessDuet</span>
+          <ChessLogo />
         </Link>
 
         <div className="ml-auto">

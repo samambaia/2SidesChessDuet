@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Zap, Github, Chrome, Loader2, AlertCircle, Copy } from 'lucide-react';
+import { Github, Chrome, Loader2, AlertCircle, Copy } from 'lucide-react';
 import { useAuth } from '@/firebase';
 import { 
   signInWithPopup, 
@@ -20,6 +20,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ChessLogo } from '@/components/ChessLogo';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -117,10 +118,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <Link href="/" className="inline-flex items-center gap-2 mb-2">
-            <div className="bg-primary p-2 rounded-xl">
-              <Zap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-3xl font-bold tracking-tight">ChessDuet</span>
+            <ChessLogo className="scale-125" />
           </Link>
           <h2 className="text-2xl font-bold">
             {isLogin ? "Bem-vindo de volta" : "Crie sua conta"}
