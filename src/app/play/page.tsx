@@ -112,14 +112,14 @@ function PlayContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      {/* Background Image with minimal opacity */}
+      {/* Background Image with optimized opacity for watermark effect */}
       {bgImage && (
-        <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none">
+        <div className="absolute inset-0 z-0 opacity-[0.07] pointer-events-none">
           <Image
             src={bgImage.imageUrl}
             alt="Chess background"
             fill
-            className="object-cover"
+            className="object-cover grayscale"
             data-ai-hint="chess board"
           />
         </div>
@@ -203,7 +203,7 @@ function PlayContent() {
                           onClick={() => setDifficulty(d)}
                           className="capitalize rounded-xl text-xs h-10"
                         >
-                          {d === 'easy' ? 'Easy' : d === 'medium' ? 'Medium' : 'Hard'}
+                          {d}
                         </Button>
                       ))}
                     </div>
