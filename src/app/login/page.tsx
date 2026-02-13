@@ -1,13 +1,13 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Zap, Github, Chrome, Loader2, AlertCircle } from 'lucide-react';
+import { Zap, Github, Chrome, Loader2, AlertCircle, Copy } from 'lucide-react';
 import { useAuth } from '@/firebase';
 import { 
   signInWithPopup, 
@@ -28,10 +28,17 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [currentDomain, setCurrentDomain] = useState('');
   
   const auth = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCurrentDomain(window.location.hostname);
+    }
+  }, []);
 
   const handleSocialLogin = async (providerName: 'google' | 'github') => {
     if (!auth) return;
@@ -52,14 +59,14 @@ export default function LoginPage() {
         errorMessage = `O provedor ${providerName} não está habilitado no Console do Firebase. Vá em Auth > Sign-in method e ative-o.`;
         setConfigError(errorMessage);
       } else if (error.code === 'auth/unauthorized-domain') {
-        errorMessage = "Este domínio não está autorizado no Console do Firebase. Vá em Auth > Settings > Authorized Domains e adicione este endereço.";
+        errorMessage = `Este domínio (${currentDomain}) não está autorizado no Console do Firebase. Copie o endereço abaixo e adicione em Auth > Settings > Authorized Domains no Console do Firebase.`;
         setConfigError(errorMessage);
       } else if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = "A janela de login foi fechada.";
       }
       
       toast({ 
-        title: "Erro de Configuração", 
+        title: "Erro de Autenticação", 
         description: errorMessage,
         variant: "destructive"
       });
@@ -100,6 +107,11 @@ export default function LoginPage() {
     }
   };
 
+  const copyDomain = () => {
+    navigator.clipboard.writeText(currentDomain);
+    toast({ title: "Copiado!", description: "Domínio copiado para sua área de transferência." });
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-accent/30 px-4 py-12">
       <div className="w-full max-w-md space-y-6">
@@ -118,9 +130,15 @@ export default function LoginPage() {
         {configError && (
           <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-2xl">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Atenção (Configuração Necessária)</AlertTitle>
-            <AlertDescription className="text-xs">
-              {configError}
+            <AlertTitle className="text-xs font-bold uppercase tracking-wider">Ação Necessária no Console</AlertTitle>
+            <AlertDescription className="text-xs space-y-3 mt-2">
+              <p>{configError}</p>
+              <div className="flex items-center justify-between bg-destructive/10 p-3 rounded-xl border border-destructive/20 mt-2">
+                <code className="text-[10px] break-all font-mono font-bold">{currentDomain}</code>
+                <Button variant="ghost" size="sm" onClick={copyDomain} className="h-8 w-8 p-0">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </AlertDescription>
           </Alert>
         )}

@@ -278,21 +278,26 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    // Detecta se estamos no ambiente de produção ou de teste
-    const isLocal = window.location.hostname.includes('workstations.cloud');
-    const publicUrl = `https://studio-3509208910-49f15.firebaseapp.com/play?room=${gameId}`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname.includes('workstations.cloud');
+    // Usa o endereço atual da página para gerar o link, garantindo que funcione em qualquer domínio autorizado
+    const currentBaseUrl = window.location.origin + window.location.pathname;
+    const publicUrl = `${currentBaseUrl}?room=${gameId}`;
     
     if (isLocal) {
        toast({ 
          title: "Atenção!", 
-         description: "O link de teste não funcionará no celular dela. Clique em PUBLISH no topo do editor para ativar o link público.",
-         duration: 5000 
+         description: "O link de teste (workstations) não funcionará no celular dela. Clique em PUBLISH para ativar o link público.",
+         duration: 8000 
        });
     }
 
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'ChessDuet - Jogue Comigo!', url: publicUrl });
+        await navigator.share({ 
+          title: 'ChessDuet - Jogue Comigo!', 
+          text: 'Entra aí no meu jogo de xadrez!',
+          url: publicUrl 
+        });
       } catch (err) {
         copyToClipboard(publicUrl);
       }
@@ -305,7 +310,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       await navigator.clipboard.writeText(text);
       setHasCopied(true);
-      toast({ title: "Link Público Copiado!", description: "Envie este link para sua filha." });
+      toast({ title: "Link Copiado!", description: "Envie este link para sua filha pelo WhatsApp." });
       setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {}
   };
@@ -336,11 +341,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 shadow-sm">
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Status da Publicação
-            <Badge variant="outline" className="text-[9px] bg-yellow-100 text-yellow-700">Ação Necessária</Badge>
+            Link de Convite Ativo
+            <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Online</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Para sua filha entrar no jogo, você <strong>precisa</strong> clicar no botão <strong>PUBLISH</strong> no topo da tela. A primeira vez pode levar alguns minutos, mas o link `...firebaseapp.com` só funcionará após isso.
+            Se você já clicou em <strong>PUBLISH</strong>, o link funcionará perfeitamente no celular da sua filha.
           </AlertDescription>
         </Alert>
       )}
