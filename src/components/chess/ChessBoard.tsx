@@ -277,20 +277,24 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const isWorkstation = window.location.hostname.includes('workstations.cloud') || window.location.hostname === 'localhost';
+    const hostname = window.location.hostname;
+    // Detecta qualquer ambiente de desenvolvimento (localhost ou Cloud Workstations)
+    const isPrivateEnv = hostname.includes('workstations.cloud') || 
+                        hostname.includes('cloudworkstations.dev') || 
+                        hostname === 'localhost' || 
+                        hostname === '127.0.0.1';
     
     // O domínio público oficial do seu app (App Hosting)
     const publicBaseUrl = "https://studio--studio-3509208910-49f15.us-central1.hosted.app/play";
     
-    // Se estiver no ambiente de teste, usamos o link público para o convite.
-    // Se já estiver no público, usamos o endereço atual.
-    const baseUrl = isWorkstation ? publicBaseUrl : (window.location.origin + window.location.pathname);
+    // Força o uso do link público se estivermos no ambiente privado de teste
+    const baseUrl = isPrivateEnv ? publicBaseUrl : (window.location.origin + window.location.pathname);
     const inviteUrl = `${baseUrl}?room=${gameId}`;
     
-    if (isWorkstation) {
+    if (isPrivateEnv) {
        toast({ 
          title: "Gerando Link Público", 
-         description: "Usando o endereço oficial para evitar erros de permissão no celular dela.",
+         description: "Detectamos que você está em ambiente de teste. Gerando o link oficial para sua filha.",
          duration: 5000 
        });
     }
@@ -345,11 +349,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 shadow-sm">
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Domínio Público Ativo
+            Link Público Ativo
             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Online</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Para sua filha entrar sem erro 401, certifique-se de que o link de convite comece com <strong>studio--studio...</strong> e que você já clicou em <strong>PUBLISH</strong>.
+            Você está jogando em um ambiente privado. O link gerado para sua filha usará o endereço oficial <strong>hosted.app</strong> para que ela não receba erro 401. Certifique-se de ter clicado em <strong>PUBLISH</strong>.
           </AlertDescription>
         </Alert>
       )}
