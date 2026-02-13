@@ -12,6 +12,7 @@ export function PWAInstaller() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
+    // Verifica se já está instalado
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
       || (window.navigator as any).standalone 
       || document.referrer.includes('android-app://');
@@ -24,6 +25,7 @@ export function PWAInstaller() {
       if (isMobile) setShowPrompt(true);
     };
 
+    // Força a exibição do prompt no celular após 2 segundos
     if (isMobile && !isStandalone) {
       setTimeout(() => setShowPrompt(true), 2000);
     }
@@ -39,6 +41,7 @@ export function PWAInstaller() {
       if (outcome === 'accepted') setShowPrompt(false);
       setDeferredPrompt(null);
     } else {
+      // Instrução manual se o prompt automático não for suportado
       alert('Para instalar ChessDuet:\n\nNo iPhone: Toque em "Compartilhar" e "Adicionar à Tela de Início".\nNo Android: Toque nos três pontos e "Instalar Aplicativo".');
     }
   };
@@ -70,7 +73,9 @@ export function PWAInstaller() {
           variant="secondary" 
           className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-primary gap-3 shadow-xl"
         >
-          <Download className="w-5 h-5" />
+          <div className="bg-primary/10 p-1 rounded-lg">
+            <Download className="w-5 h-5" />
+          </div>
           INSTALAR AGORA
         </Button>
       </div>

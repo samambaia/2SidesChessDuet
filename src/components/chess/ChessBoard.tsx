@@ -5,13 +5,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Chess, Square as ChessSquare } from 'chess.js';
 import { cn } from '@/lib/utils';
 import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareName } from '@/lib/chess-utils';
-import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, History, ShieldAlert, Trophy } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import {
@@ -19,7 +18,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -29,13 +27,9 @@ interface ChessBoardProps {
   gameId?: string;
 }
 
-const STORAGE_KEY = 'chess_duet_saved_game';
-
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
   const firestore = useFirestore();
-  const { user } = useUser();
   const { toast } = useToast();
-  
   const game = useMemo(() => new Chess(), []);
   
   const [board, setBoard] = useState(chessJsToBoard(game));
@@ -46,9 +40,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalyzeGameHistoryOutput | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [hasCopied, setHasCopied] = useState(false);
-  const [showResumeDialog, setShowResumeDialog] = useState(false);
-  const [savedGameData, setSavedGameData] = useState<any>(null);
   const [isInCheck, setIsInCheck] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
 
@@ -62,56 +53,30 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const checkGameOverStatus = useCallback(() => {
     if (game.isGameOver()) {
       setIsGameOver(true);
-      let title = "Fim de Jogo";
-      let message = "";
+      const title = game.isCheckmate() ? "XEQUE-MATE!" : "FIM DE JOGO";
+      const message = game.isCheckmate() 
+        ? `As ${game.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram! O Rei não tem mais saída.`
+        : "A partida terminou em empate.";
 
-      if (game.isCheckmate()) {
-        const winner = game.turn() === 'w' ? 'Pretas' : 'Brancas';
-        title = "XEQUE-MATE!";
-        message = `As ${winner} venceram! O Rei não tem mais saída.`;
-      } else if (game.isDraw()) {
-        title = "Empate!";
-        message = "A partida terminou em empate.";
-      }
-
-      toast({
-        title,
-        description: message,
-        variant: "default",
-      });
-      localStorage.removeItem(STORAGE_KEY);
+      toast({ title, description: message });
       return true;
     }
     return false;
   }, [game, toast]);
 
   useEffect(() => {
-    if (remoteGame?.fen) {
-      if (remoteGame.fen !== game.fen()) {
-        try {
-          game.load(remoteGame.fen);
-          setBoard(chessJsToBoard(game));
-          setTurn(game.turn());
-          setIsInCheck(game.inCheck());
-          checkGameOverStatus();
-        } catch (e) {
-          console.error("Erro ao sincronizar FEN remoto:", e);
-        }
-      }
-    } else if (!gameId && !savedGameData) {
-      game.load(INITIAL_FEN);
+    if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
+      game.load(remoteGame.fen);
       setBoard(chessJsToBoard(game));
-      setTurn('w');
-      setIsInCheck(false);
-      setIsGameOver(false);
+      setTurn(game.turn());
+      setIsInCheck(game.inCheck());
+      checkGameOverStatus();
     }
-  }, [remoteGame, gameId, game, savedGameData, checkGameOverStatus]);
+  }, [remoteGame, game, checkGameOverStatus]);
 
   useEffect(() => {
     if (isGameOver) return;
-    const interval = setInterval(() => {
-      setElapsedSeconds(prev => prev + 1);
-    }, 1000);
+    const interval = setInterval(() => setElapsedSeconds(p => p + 1), 1000);
     return () => clearInterval(interval);
   }, [isGameOver]);
 
@@ -129,15 +94,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const triggerAiMove = useCallback(async () => {
     if (game.isGameOver()) return;
     setIsThinking(true);
-    
     try {
-      const fen = game.fen();
-      const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
+      const aiResponse = await aiOpponentDifficulty({ fen: game.fen(), difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
-      try {
-        game.move(moveStr);
-      } catch (e) {
+      const move = game.move(moveStr);
+      if (!move) {
+        // Fallback para movimento aleatório se a IA falhar
         const legalMoves = game.moves();
         if (legalMoves.length > 0) game.move(legalMoves[0]);
       }
@@ -147,23 +110,22 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setIsInCheck(game.inCheck());
       syncToFirestore();
       checkGameOverStatus();
-    } catch (error: any) {
-      toast({ title: "IA Ocupada", description: "Tentando novamente...", variant: "destructive" });
+    } catch (error) {
+      console.error("AI Error", error);
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, game, syncToFirestore, toast, checkGameOverStatus]);
+  }, [difficulty, game, syncToFirestore, checkGameOverStatus]);
 
-  const executeMove = async (to: ChessSquare, fromOverride?: ChessSquare) => {
-    const from = fromOverride || selected;
-    if (!from || isGameOver) return;
+  const executeMove = async (to: ChessSquare) => {
+    if (!selected || isGameOver) return;
     
-    // VERIFICAÇÃO DE REGRAS: Impedir captura de Rei (Ilegal)
+    // REGRA DE OURO: Impedir captura física do Rei
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
         title: "Movimento Ilegal!", 
-        description: "O Rei nunca pode ser capturado. Você deve dar Xeque-mate.", 
+        description: "O Rei nunca pode ser capturado. Você deve cercá-lo para dar Xeque-mate.", 
         variant: "destructive" 
       });
       setSelected(null);
@@ -172,11 +134,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
 
     try {
-      const move = game.move({ from, to, promotion: 'q' });
+      const move = game.move({ from: selected, to, promotion: 'q' });
       if (!move) {
-        toast({ title: "Movimento Inválido", description: "O Rei ficaria em perigo!", variant: "destructive" });
-        setSelected(null);
-        setPossibleMoves([]);
+        toast({ title: "Ilegal", description: "Esse movimento deixaria seu Rei em perigo!", variant: "destructive" });
         return;
       }
 
@@ -187,13 +147,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setIsInCheck(game.inCheck());
       syncToFirestore();
 
-      if (!checkGameOverStatus()) {
-        if (mode === 'ai' && game.turn() === 'b') {
-          setTimeout(triggerAiMove, 500);
-        }
+      if (!checkGameOverStatus() && mode === 'ai' && game.turn() === 'b') {
+        setTimeout(triggerAiMove, 600);
       }
     } catch (e) {
-      toast({ title: "Ilegal!", description: "Siga as regras oficiais do xadrez.", variant: "destructive" });
+      toast({ title: "Erro", description: "Movimento não permitido pelas regras.", variant: "destructive" });
     }
   };
 
@@ -207,8 +165,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const piece = game.get(squareName);
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
-      const moves = game.moves({ square: squareName, verbose: true });
-      setPossibleMoves(moves.map(m => m.to));
+      setPossibleMoves(game.moves({ square: squareName, verbose: true }).map(m => m.to));
     } else {
       setSelected(null);
       setPossibleMoves([]);
@@ -218,8 +175,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const handleAnalyzeMatch = async () => {
     setIsAnalyzing(true);
     try {
-      const historyStr = game.history().join(', ');
-      const result = await analyzeGameHistory({ gameHistory: historyStr || "Partida curta." });
+      const result = await analyzeGameHistory({ gameHistory: game.history().join(', ') || "Partida curta." });
       setAnalysis(result);
     } catch (err) {
       toast({ title: "Erro na análise", variant: "destructive" });
@@ -229,25 +185,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const inviteUrl = `https://studio--studio-3509208910-49f15.us-central1.hosted.app/play?room=${gameId}`;
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setHasCopied(true);
-      toast({ title: "Link Copiado!", description: "Envie este link para sua filha." });
-      setTimeout(() => setHasCopied(false), 2000);
-    } catch (err) {}
-  };
-
-  const handleResumeGame = () => {
-    if (savedGameData) {
-      game.load(savedGameData.fen);
-      setBoard(chessJsToBoard(game));
-      setTurn(game.turn());
-      setElapsedSeconds(savedGameData.elapsedSeconds || 0);
-      setIsInCheck(game.inCheck());
-      checkGameOverStatus();
-    }
-    setShowResumeDialog(false);
+    const inviteUrl = `${window.location.origin}/play?room=${gameId}`;
+    await navigator.clipboard.writeText(inviteUrl);
+    toast({ title: "Link Copiado!", description: "Envie para sua filha entrar na sala." });
   };
 
   return (
@@ -258,8 +198,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <span className="font-mono font-bold text-lg">{formatTotalTime(elapsedSeconds)}</span>
          </div>
          {gameId && !isGameOver && (
-           <Button variant="outline" size="sm" className="rounded-full gap-2" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> Convite
+           <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20" onClick={handleInvite}>
+             <Share2 className="w-3 h-3" /> Convidar
            </Button>
          )}
       </div>
@@ -301,10 +241,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Parabéns pela partida!</p>
                   <div className="grid gap-2">
                     <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black">
-                      <Activity className="w-4 h-4" /> Ver Feedback IA
+                      <Activity className="w-4 h-4" /> Feedback da IA
                     </Button>
                     <Button variant="ghost" onClick={() => window.location.reload()} className="text-xs">
-                      Nova Partida
+                      Jogar Novamente
                     </Button>
                   </div>
                </div>
@@ -357,12 +297,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-[10px] font-black uppercase tracking-widest gap-2"
-            onClick={() => {
-              if (confirm("Reiniciar partida?")) {
-                window.location.reload();
-              }
-            }}
+            className="text-[10px] font-black uppercase tracking-widest gap-2 opacity-50 hover:opacity-100"
+            onClick={() => { if (confirm("Reiniciar partida?")) window.location.reload(); }}
           >
             <RotateCcw className="w-3 h-3" /> Reiniciar Jogo
           </Button>
@@ -372,7 +308,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <DialogContent className="max-w-xl rounded-[2.5rem] p-10">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-3xl font-black">
-              <Activity className="w-8 h-8 text-primary" /> Tutor IA
+              <Activity className="w-8 h-8 text-primary" /> Tutor de Xadrez
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-6 mt-8">
