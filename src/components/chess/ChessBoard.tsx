@@ -91,6 +91,29 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [gameId, gameRef, game]);
 
+  const handleRestart = async () => {
+    if (!confirm("Tem certeza que deseja reiniciar a partida? Todos os movimentos serão perdidos.")) return;
+
+    game.reset();
+    setBoard(chessJsToBoard(game));
+    setTurn('w');
+    setIsInCheck(false);
+    setIsGameOver(false);
+    setElapsedSeconds(0);
+    setAnalysis(null);
+
+    if (gameId && gameRef) {
+      updateDocumentNonBlocking(gameRef, {
+        fen: INITIAL_FEN,
+        turn: 'w',
+        moves: [],
+        lastUpdated: serverTimestamp()
+      });
+    }
+    
+    toast({ title: "Jogo Reiniciado", description: "O tabuleiro voltou ao estado inicial." });
+  };
+
   const triggerAiMove = useCallback(async () => {
     if (game.isGameOver()) return;
     setIsThinking(true);
@@ -100,7 +123,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       
       const move = game.move(moveStr);
       if (!move) {
-        // Fallback para movimento aleatório se a IA falhar
         const legalMoves = game.moves();
         if (legalMoves.length > 0) game.move(legalMoves[0]);
       }
@@ -120,7 +142,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const executeMove = async (to: ChessSquare) => {
     if (!selected || isGameOver) return;
     
-    // REGRA DE OURO: Impedir captura física do Rei
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
@@ -185,7 +206,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    // Detecta se estamos no ambiente de workstations ou no app público
     const isWorkstation = window.location.hostname.includes('cloudworkstations.dev') || 
                          window.location.hostname.includes('workstations.cloud');
     
@@ -198,9 +218,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     
     toast({ 
       title: "Link Copiado!", 
-      description: isWorkstation 
-        ? "Link público gerado. Mande para sua filha!" 
-        : "Link da sala copiado.",
+      description: "Envie este link para sua filha se juntar ao jogo.",
     });
   };
 
@@ -213,7 +231,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
          </div>
          {gameId && !isGameOver && (
            <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> Convidar
+             <Share2 className="w-3 h-3" /> Convidar Filha
            </Button>
          )}
       </div>
@@ -257,7 +275,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                     <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black">
                       <Activity className="w-4 h-4" /> Feedback da IA
                     </Button>
-                    <Button variant="ghost" onClick={() => window.location.reload()} className="text-xs">
+                    <Button variant="ghost" onClick={handleRestart} className="text-xs">
                       Jogar Novamente
                     </Button>
                   </div>
@@ -312,7 +330,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             variant="ghost" 
             size="sm" 
             className="text-[10px] font-black uppercase tracking-widest gap-2 opacity-50 hover:opacity-100"
-            onClick={() => { if (confirm("Reiniciar partida?")) window.location.reload(); }}
+            onClick={handleRestart}
           >
             <RotateCcw className="w-3 h-3" /> Reiniciar Jogo
           </Button>
