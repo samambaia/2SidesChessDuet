@@ -12,7 +12,7 @@ export function PWAInstaller() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
-    // Verifica se já está instalado
+    // Verifica se já está instalado ou em modo standalone
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
       || (window.navigator as any).standalone 
       || document.referrer.includes('android-app://');
@@ -25,9 +25,10 @@ export function PWAInstaller() {
       if (isMobile) setShowPrompt(true);
     };
 
-    // Força a exibição do prompt no celular após 2 segundos
+    // Força a exibição do prompt no celular após 3 segundos para garantir visibilidade
     if (isMobile && !isStandalone) {
-      setTimeout(() => setShowPrompt(true), 2000);
+      const timer = setTimeout(() => setShowPrompt(true), 3000);
+      return () => clearTimeout(timer);
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -41,8 +42,8 @@ export function PWAInstaller() {
       if (outcome === 'accepted') setShowPrompt(false);
       setDeferredPrompt(null);
     } else {
-      // Instrução manual se o prompt automático não for suportado
-      alert('Para instalar ChessDuet:\n\nNo iPhone: Toque em "Compartilhar" e "Adicionar à Tela de Início".\nNo Android: Toque nos três pontos e "Instalar Aplicativo".');
+      // Instrução manual persistente
+      alert('Para instalar o ChessDuet no seu smartphone:\n\nNo iPhone: Toque em "Compartilhar" e depois em "Adicionar à Tela de Início".\nNo Android: Toque nos três pontos do navegador e selecione "Instalar Aplicativo".');
     }
   };
 
@@ -64,14 +65,14 @@ export function PWAInstaller() {
           </div>
           <div className="flex-1">
             <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Instalar ChessDuet</h3>
-            <p className="text-[11px] opacity-90 mt-1 font-bold">Jogue como um app real na tela inicial!</p>
+            <p className="text-[11px] opacity-90 mt-1 font-bold">Jogue como um app real e sem interrupções!</p>
           </div>
         </div>
 
         <Button 
           onClick={handleInstall}
           variant="secondary" 
-          className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-primary gap-3 shadow-xl"
+          className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-primary gap-3 shadow-xl active:scale-95 transition-transform"
         >
           <div className="bg-primary/10 p-1 rounded-lg">
             <Download className="w-5 h-5" />

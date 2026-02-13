@@ -30,9 +30,11 @@ interface ChessBoardProps {
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const game = useMemo(() => new Chess(), []);
   
-  const [board, setBoard] = useState(chessJsToBoard(game));
+  // Usamos um estado para forçar o re-render do tabuleiro quando o objeto game é resetado
+  const [game, setGame] = useState(() => new Chess());
+  
+  const [board, setBoard] = useState(() => chessJsToBoard(game));
   const [selected, setSelected] = useState<ChessSquare | null>(null);
   const [possibleMoves, setPossibleMoves] = useState<ChessSquare[]>([]);
   const [turn, setTurn] = useState<'w' | 'b'>('w');
@@ -50,57 +52,63 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  const checkGameOverStatus = useCallback(() => {
-    if (game.isGameOver()) {
+  const checkGameOverStatus = useCallback((currentGame: Chess) => {
+    if (currentGame.isGameOver()) {
       setIsGameOver(true);
-      const title = game.isCheckmate() ? "XEQUE-MATE!" : "FIM DE JOGO";
-      const message = game.isCheckmate() 
-        ? `As ${game.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram! O Rei não tem mais saída.`
-        : "A partida terminou em empate.";
+      const title = currentGame.isCheckmate() ? "XEQUE-MATE!" : "FIM DE JOGO";
+      let message = "A partida terminou em empate.";
+      
+      if (currentGame.isCheckmate()) {
+        message = `As ${currentGame.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram! O Rei não tem mais saída.`;
+      }
 
       toast({ title, description: message });
       return true;
     }
     return false;
-  }, [game, toast]);
+  }, [toast]);
 
+  // Sincronização com Firestore
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
-      game.load(remoteGame.fen);
-      setBoard(chessJsToBoard(game));
-      setTurn(game.turn());
-      setIsInCheck(game.inCheck());
-      checkGameOverStatus();
+      const newGame = new Chess(remoteGame.fen);
+      setGame(newGame);
+      setBoard(chessJsToBoard(newGame));
+      setTurn(newGame.turn());
+      setIsInCheck(newGame.inCheck());
+      checkGameOverStatus(newGame);
     }
-  }, [remoteGame, game, checkGameOverStatus]);
+  }, [remoteGame, checkGameOverStatus, game]);
 
+  // Cronômetro
   useEffect(() => {
     if (isGameOver) return;
     const interval = setInterval(() => setElapsedSeconds(p => p + 1), 1000);
     return () => clearInterval(interval);
   }, [isGameOver]);
 
-  const syncToFirestore = useCallback(() => {
+  const syncToFirestore = useCallback((currentGame: Chess) => {
     if (gameId && gameRef) {
       updateDocumentNonBlocking(gameRef, {
-        fen: game.fen(),
-        turn: game.turn(),
-        moves: game.history(),
+        fen: currentGame.fen(),
+        turn: currentGame.turn(),
+        moves: currentGame.history(),
         lastUpdated: serverTimestamp()
       });
     }
-  }, [gameId, gameRef, game]);
+  }, [gameId, gameRef]);
 
-  const handleRestart = async () => {
-    if (!confirm("Tem certeza que deseja reiniciar a partida? Todos os movimentos serão perdidos.")) return;
-
-    game.reset();
-    setBoard(chessJsToBoard(game));
+  const handleRestart = () => {
+    const newGame = new Chess();
+    setGame(newGame);
+    setBoard(chessJsToBoard(newGame));
     setTurn('w');
     setIsInCheck(false);
     setIsGameOver(false);
     setElapsedSeconds(0);
     setAnalysis(null);
+    setSelected(null);
+    setPossibleMoves([]);
 
     if (gameId && gameRef) {
       updateDocumentNonBlocking(gameRef, {
@@ -114,34 +122,37 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     toast({ title: "Jogo Reiniciado", description: "O tabuleiro voltou ao estado inicial." });
   };
 
-  const triggerAiMove = useCallback(async () => {
-    if (game.isGameOver()) return;
+  const triggerAiMove = useCallback(async (currentGame: Chess) => {
+    if (currentGame.isGameOver()) return;
     setIsThinking(true);
     try {
-      const aiResponse = await aiOpponentDifficulty({ fen: game.fen(), difficulty });
+      const aiResponse = await aiOpponentDifficulty({ fen: currentGame.fen(), difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
-      const move = game.move(moveStr);
-      if (!move) {
-        const legalMoves = game.moves();
-        if (legalMoves.length > 0) game.move(legalMoves[0]);
+      try {
+        currentGame.move(moveStr);
+      } catch (e) {
+        // Se a IA falhar, tenta o primeiro movimento legal
+        const legalMoves = currentGame.moves();
+        if (legalMoves.length > 0) currentGame.move(legalMoves[0]);
       }
       
-      setBoard(chessJsToBoard(game));
-      setTurn(game.turn());
-      setIsInCheck(game.inCheck());
-      syncToFirestore();
-      checkGameOverStatus();
+      setBoard(chessJsToBoard(currentGame));
+      setTurn(currentGame.turn());
+      setIsInCheck(currentGame.inCheck());
+      syncToFirestore(currentGame);
+      checkGameOverStatus(currentGame);
     } catch (error) {
       console.error("AI Error", error);
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, game, syncToFirestore, checkGameOverStatus]);
+  }, [difficulty, syncToFirestore, checkGameOverStatus]);
 
   const executeMove = async (to: ChessSquare) => {
     if (!selected || isGameOver) return;
     
+    // REGRA DE OURO: O Rei nunca pode ser ocupado por outra peça
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
@@ -157,7 +168,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       const move = game.move({ from: selected, to, promotion: 'q' });
       if (!move) {
-        toast({ title: "Ilegal", description: "Esse movimento deixaria seu Rei em perigo!", variant: "destructive" });
+        toast({ title: "Ilegal", description: "Esse movimento não é permitido pelas regras do xadrez.", variant: "destructive" });
         return;
       }
 
@@ -166,27 +177,35 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setPossibleMoves([]);
       setTurn(game.turn());
       setIsInCheck(game.inCheck());
-      syncToFirestore();
+      syncToFirestore(game);
 
-      if (!checkGameOverStatus() && mode === 'ai' && game.turn() === 'b') {
-        setTimeout(triggerAiMove, 600);
+      if (!checkGameOverStatus(game) && mode === 'ai' && game.turn() === 'b') {
+        setTimeout(() => triggerAiMove(game), 600);
       }
     } catch (e) {
-      toast({ title: "Erro", description: "Movimento não permitido pelas regras.", variant: "destructive" });
+      toast({ title: "Erro", description: "Movimento inválido.", variant: "destructive" });
     }
   };
 
   const handleSquareClick = (r: number, f: number) => {
     if (isThinking || isGameOver) return;
     const squareName = getSquareName(r, f);
+    
+    // Se clicou em uma casa de movimento possível, executa o movimento
     if (selected && possibleMoves.includes(squareName)) {
       executeMove(squareName);
       return;
     }
+
+    // Seleção de peça
     const piece = game.get(squareName);
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
-      setPossibleMoves(game.moves({ square: squareName, verbose: true }).map(m => m.to));
+      // Filtramos movimentos que capturariam o rei (embora o chess.js não os gere, garantimos aqui)
+      const moves = game.moves({ square: squareName, verbose: true })
+        .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
+        .map(m => m.to as ChessSquare);
+      setPossibleMoves(moves);
     } else {
       setSelected(null);
       setPossibleMoves([]);
@@ -206,10 +225,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const isWorkstation = window.location.hostname.includes('cloudworkstations.dev') || 
-                         window.location.hostname.includes('workstations.cloud');
-    
-    const domain = isWorkstation 
+    const domain = window.location.hostname.includes('cloudworkstations.dev') || 
+                  window.location.hostname.includes('workstations.cloud')
       ? 'https://studio--studio-3509208910-49f15.us-central1.hosted.app' 
       : window.location.origin;
 
@@ -218,7 +235,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     
     toast({ 
       title: "Link Copiado!", 
-      description: "Envie este link para sua filha se juntar ao jogo.",
+      description: "Mande este link público para sua filha!",
     });
   };
 
@@ -241,7 +258,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
             <AlertTitle className="font-black uppercase tracking-widest text-xs">CUIDADO! XEQUE!</AlertTitle>
-            <AlertDescription className="text-[10px] font-medium">Proteja seu Rei agora!</AlertDescription>
+            <AlertDescription className="text-[10px] font-medium">Seu Rei está sob ataque!</AlertDescription>
           </Alert>
         </div>
       )}
@@ -270,7 +287,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                <div className="bg-white/95 p-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
                   <Trophy className="w-16 h-16 text-amber-500 mx-auto mb-4" />
                   <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">FIM DE JOGO</h2>
-                  <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Parabéns pela partida!</p>
+                  <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Bela partida!</p>
                   <div className="grid gap-2">
                     <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black">
                       <Activity className="w-4 h-4" /> Feedback da IA
