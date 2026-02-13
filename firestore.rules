@@ -1,67 +1,32 @@
 /**
- * ChessDuet Security Rules
+ * ChessDuet Security Rules - Versão Simplificada para PvP
  *
- * Core Philosophy:
- * 1. User Privacy: Strict ownership-based access for user profile data.
- * 2. Collaborative Gameplay: Shared access for Games based on participant IDs.
- * 3. Discovery: Allow 'get' for any signed-in user to enable joining via link and 
- *    prevent errors when a document is being initialized.
+ * Objetivo: Permitir que jogadores entrem e joguem via link sem bloqueios de permissão,
+ * mantendo apenas a privacidade básica do perfil de usuário.
  */
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- GLOBAL HELPER FUNCTIONS ---
-
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /** 
-     * @description Checks if the authenticated user is one of the two players.
-     */
-    function isParticipant(data) {
-      return isSignedIn() && data != null && (
-        (data.get('player1Id', null) == request.auth.uid) || 
-        (data.get('player2Id', null) == request.auth.uid)
-      );
-    }
-
-    // --- COLLECTION RULES ---
-
+    // --- REGRAS PARA USUÁRIOS ---
     match /users/{userId} {
-      allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isOwner(userId);
+      // Usuários só podem ler e escrever em seus próprios perfis
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
+    // --- REGRAS PARA PARTIDAS (GAMES) ---
     match /games/{gameId} {
-      // Allow 'get' for any signed-in user. 
-      // This is crucial for joining via link and prevents permission errors 
-      // if the app tries to read the doc before the 'create' is fully indexed.
-      allow get: if isSignedIn();
-      
-      // Listing is restricted to games where the user is a participant.
-      allow list: if isSignedIn() && isParticipant(resource.data);
-      
-      // Allow creation if the user sets themselves as player1.
-      allow create: if isSignedIn() 
-        && request.resource.data.get('player1Id', null) == request.auth.uid
-        && request.resource.data.get('id', null) == gameId;
+      // Permite leitura, criação e atualização para qualquer usuário logado.
+      // Isso garante que quem recebe o link consiga entrar (join) e fazer jogadas (move).
+      allow read, create, update: if isSignedIn();
 
-      // Allow updates for moves if participant, or for joining if player2 slot is empty.
-      allow update: if isSignedIn() && resource != null && (
-        isParticipant(resource.data) || 
-        (resource.data.get('player2Id', null) == null && request.resource.data.get('player2Id', null) == request.auth.uid)
-      );
-
-      allow delete: if isSignedIn() && resource != null && resource.data.get('player1Id', null) == request.auth.uid;
+      // Apenas o criador da partida (player1Id) pode deletá-la
+      allow delete: if isSignedIn() && resource.data.player1Id == request.auth.uid;
     }
   }
 }

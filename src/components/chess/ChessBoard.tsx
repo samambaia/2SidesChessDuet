@@ -93,14 +93,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [board, turn, mode, difficulty, elapsedSeconds, gameId, game]);
 
+  // Lógica para o segundo jogador entrar na sala
   useEffect(() => {
-    if (remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
-      updateDocumentNonBlocking(gameRef!, {
+    if (gameId && gameRef && remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
+      updateDocumentNonBlocking(gameRef, {
         player2Id: user.uid,
         lastUpdated: serverTimestamp()
       });
     }
-  }, [remoteGame, user, gameRef]);
+  }, [remoteGame, user, gameRef, gameId]);
 
   useEffect(() => {
     if (remoteGame?.fen) {
@@ -109,7 +110,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           game.load(remoteGame.fen);
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
-        } catch (e) {}
+        } catch (e) {
+          console.error("Erro ao sincronizar FEN remoto:", e);
+        }
       }
     } else if (!gameId && !savedGameData) {
       game.load(INITIAL_FEN);
@@ -146,33 +149,27 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
-      // Tenta o movimento sugerido pela IA
       let move = null;
       try {
         move = game.move(moveStr);
       } catch (e) {
-        // Se falhar UCI direto, tenta tratar como algébrica curta apenas como fallback
-        move = game.move(moveStr);
+        // Fallback: tenta movimento legal se a IA sugerir algo inválido
+        const legalMoves = game.moves();
+        if (legalMoves.length > 0) {
+          game.move(legalMoves[0]);
+          move = true;
+        }
       }
       
       if (move) {
         setBoard(chessJsToBoard(game));
         setTurn(game.turn());
         syncToFirestore();
-      } else {
-        // Fallback: se a IA sugerir algo inválido, pega o primeiro movimento legal disponível
-        const legalMoves = game.moves();
-        if (legalMoves.length > 0) {
-          game.move(legalMoves[0]);
-          setBoard(chessJsToBoard(game));
-          setTurn(game.turn());
-          syncToFirestore();
-        }
       }
     } catch (error: any) {
       toast({ 
         title: "Erro na IA", 
-        description: "Não foi possível obter o movimento da IA. Tente novamente.",
+        description: "Não foi possível obter o movimento da IA.",
         variant: "destructive"
       });
     } finally {
@@ -286,27 +283,14 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const handleInvite = async () => {
     const hostname = window.location.hostname;
-    // Detecta qualquer ambiente de desenvolvimento (localhost ou Cloud Workstations)
     const isPrivateEnv = hostname.includes('workstations.cloud') || 
                         hostname.includes('cloudworkstations.dev') || 
-                        hostname === 'localhost' || 
-                        hostname === '127.0.0.1';
+                        hostname === 'localhost';
     
-    // O domínio público oficial do seu app (App Hosting)
     const publicBaseUrl = "https://studio--studio-3509208910-49f15.us-central1.hosted.app/play";
-    
-    // Força o uso do link público se estivermos no ambiente privado de teste
     const baseUrl = isPrivateEnv ? publicBaseUrl : (window.location.origin + window.location.pathname);
     const inviteUrl = `${baseUrl}?room=${gameId}`;
     
-    if (isPrivateEnv) {
-       toast({ 
-         title: "Gerando Link Público", 
-         description: "Detectamos que você está em ambiente de teste. Gerando o link oficial para sua filha.",
-         duration: 5000 
-       });
-    }
-
     if (navigator.share) {
       try {
         await navigator.share({ 
@@ -326,7 +310,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       await navigator.clipboard.writeText(text);
       setHasCopied(true);
-      toast({ title: "Link Copiado!", description: "Envie este link para sua filha pelo WhatsApp." });
+      toast({ title: "Link Copiado!", description: "Envie este link para sua filha." });
       setTimeout(() => setHasCopied(false), 2000);
     } catch (err) {}
   };
@@ -357,11 +341,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <Alert className="bg-primary/5 border-primary/20 rounded-2xl mb-2 shadow-sm">
           <AlertCircle className="h-4 w-4 text-primary" />
           <AlertTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-            Link Público Ativo
-            <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Online</Badge>
+            Sala Online
+            <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Ativa</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Você está jogando em um ambiente privado. O link gerado para sua filha usará o endereço oficial <strong>hosted.app</strong> para que ela não receba erro 401. Certifique-se de ter clicado em <strong>PUBLISH</strong>.
+            Convide alguém para jogar usando o botão abaixo. As regras de segurança foram atualizadas para garantir que as jogadas sincronizem sem erros.
           </AlertDescription>
         </Alert>
       )}
@@ -406,7 +390,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
              <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-100 animate-in zoom-in-95">
                 <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                <span className="text-sm font-black uppercase tracking-widest text-primary">IA Pensando...</span>
+                <span className="text-sm font-black uppercase tracking-widest text-primary">Pensando...</span>
              </div>
           </div>
         )}
@@ -459,9 +443,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         {game.isGameOver() && (
           <div className="flex flex-col gap-4 p-8 bg-primary/10 border-2 border-primary/20 rounded-[2rem] text-center animate-in zoom-in-95 duration-500 shadow-xl">
             <Award className="w-10 h-10 text-primary mx-auto" />
-            <div>
-              <h3 className="text-xl font-black text-primary uppercase">Fim de Partida</h3>
-            </div>
+            <h3 className="text-xl font-black text-primary uppercase">Fim de Partida</h3>
             <Button 
               className="rounded-2xl gap-3 h-14 font-bold shadow-xl shadow-primary/25"
               onClick={handleAnalyzeMatch}
