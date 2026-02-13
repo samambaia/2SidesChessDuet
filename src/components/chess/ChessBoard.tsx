@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -64,13 +63,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const checkGameOverStatus = useCallback((currentGame: Chess) => {
     if (currentGame.isGameOver()) {
       setIsGameOver(true);
-      const title = currentGame.isCheckmate() ? "XEQUE-MATE!" : "FIM DE JOGO";
-      let message = "A partida terminou em empate.";
+      const title = currentGame.isCheckmate() ? "CHECKMATE!" : "GAME OVER";
+      let message = "The game ended in a draw.";
       
       if (currentGame.isCheckmate()) {
-        message = `As ${currentGame.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram! O Rei não tem mais saída.`;
+        message = `${currentGame.turn() === 'w' ? 'Black' : 'White'} won! The King has no escape.`;
       } else if (currentGame.isDraw()) {
-        message = "O jogo terminou em empate.";
+        message = "The game ended in a draw.";
       }
 
       toast({ title, description: message });
@@ -126,7 +125,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setPossibleMoves([]);
     setDragState(null);
     
-    // Atualiza local e remoto
     setGame(newGame);
     setBoard(chessJsToBoard(newGame));
     setTurn('w');
@@ -141,7 +139,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
     }
 
-    toast({ title: "Jogo Reiniciado", description: "O tabuleiro voltou para a posição inicial." });
+    toast({ title: "Game Restarted", description: "The board has been reset to the starting position." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -173,12 +171,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const executeMove = (from: ChessSquare, to: ChessSquare) => {
     if (isGameOver || isThinking) return;
     
-    // REGRA DE OURO: O Rei nunca pode ser capturado
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
-        title: "Movimento Ilegal!", 
-        description: "No xadrez, você não captura o Rei. Você deve cercá-lo para dar Xeque-mate!", 
+        title: "Illegal Move!", 
+        description: "In chess, you don't capture the King. You must checkmate it!", 
         variant: "destructive" 
       });
       return;
@@ -192,7 +189,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setPossibleMoves([]);
         updateGameState(nextGame);
       } else {
-        toast({ title: "Movimento Inválido", description: "Essa jogada não é permitida pelas regras.", variant: "destructive" });
+        toast({ title: "Invalid Move", description: "This move is not allowed by the rules.", variant: "destructive" });
       }
     } catch (e) {
       console.error("Move error", e);
@@ -261,10 +258,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const handleAnalyzeMatch = async () => {
     setIsAnalyzing(true);
     try {
-      const result = await analyzeGameHistory({ gameHistory: game.history().join(', ') || "Partida curta." });
+      const result = await analyzeGameHistory({ gameHistory: game.history().join(', ') || "Short match." });
       setAnalysis(result);
     } catch (err) {
-      toast({ title: "Erro na análise", variant: "destructive" });
+      toast({ title: "Analysis error", variant: "destructive" });
     } finally {
       setIsAnalyzing(false);
     }
@@ -273,7 +270,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const handleInvite = async () => {
     const inviteUrl = `${window.location.origin}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
-    toast({ title: "Link de Jogo Copiado!", description: "Envie para sua filha entrar na partida." });
+    toast({ title: "Game Link Copied!", description: "Send this to your friend to join the match." });
   };
 
   return (
@@ -285,7 +282,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
          </div>
          {gameId && !isGameOver && (
            <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> Convidar
+             <Share2 className="w-3 h-3" /> Invite
            </Button>
          )}
       </div>
@@ -294,8 +291,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <div className="w-full animate-bounce">
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
-            <AlertTitle className="font-black uppercase tracking-widest text-xs">CUIDADO! XEQUE!</AlertTitle>
-            <AlertDescription className="text-[10px] font-medium">Seu Rei está sendo atacado! Proteja-o agora.</AlertDescription>
+            <AlertTitle className="font-black uppercase tracking-widest text-xs">CAUTION! CHECK!</AlertTitle>
+            <AlertDescription className="text-[10px] font-medium">Your King is under attack! Protect it now.</AlertDescription>
           </Alert>
         </div>
       )}
@@ -304,11 +301,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <div className={cn(
           "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
           turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
-        )}>BRANCAS</div>
+        )}>WHITE</div>
         <div className={cn(
           "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
           turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
-        )}>PRETAS</div>
+        )}>BLACK</div>
       </div>
 
       <div 
@@ -320,20 +317,20 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
              {isThinking && (
                <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  <span className="text-sm font-black uppercase tracking-widest">Analisando...</span>
+                  <span className="text-sm font-black uppercase tracking-widest">Thinking...</span>
                </div>
              )}
              {isGameOver && (
                <div className="bg-white/95 p-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
                   <Trophy className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-                  <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">FIM DE JOGO</h2>
-                  <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Bela partida!</p>
+                  <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">GAME OVER</h2>
+                  <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Great match!</p>
                   <div className="grid gap-2">
                     <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black">
-                      <Activity className="w-4 h-4" /> Feedback da IA
+                      <Activity className="w-4 h-4" /> AI Feedback
                     </Button>
                     <Button variant="ghost" onClick={handleRestart} className="text-xs">
-                      Jogar Novamente
+                      Play Again
                     </Button>
                   </div>
                </div>
@@ -404,7 +401,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             className="text-[10px] font-black uppercase tracking-widest gap-2 opacity-50 hover:opacity-100"
             onClick={handleRestart}
           >
-            <RotateCcw className="w-3 h-3" /> Reiniciar Jogo
+            <RotateCcw className="w-3 h-3" /> Restart Game
           </Button>
       </div>
 
@@ -412,20 +409,20 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <DialogContent className="max-w-xl rounded-[2.5rem] p-10">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-3xl font-black">
-              <Activity className="w-8 h-8 text-primary" /> Tutor de Xadrez
+              <Activity className="w-8 h-8 text-primary" /> Chess Tutor
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-6 mt-8">
             <div className="p-6 bg-green-50 rounded-2xl border border-green-100">
-              <h4 className="text-[11px] font-black text-green-700 uppercase mb-2">PONTOS FORTES</h4>
+              <h4 className="text-[11px] font-black text-green-700 uppercase mb-2">STRENGTHS</h4>
               <p className="text-sm text-green-800">{analysis?.strengths}</p>
             </div>
             <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
-              <h4 className="text-[11px] font-black text-amber-700 uppercase mb-2">OPORTUNIDADES</h4>
+              <h4 className="text-[11px] font-black text-amber-700 uppercase mb-2">OPPORTUNITIES</h4>
               <p className="text-sm text-amber-800">{analysis?.weaknesses}</p>
             </div>
             <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10">
-              <h4 className="text-[11px] font-black text-primary uppercase mb-2">VEREDITO</h4>
+              <h4 className="text-[11px] font-black text-primary uppercase mb-2">ASSESSMENT</h4>
               <p className="text-lg font-bold">{analysis?.overallAssessment}</p>
             </div>
           </div>

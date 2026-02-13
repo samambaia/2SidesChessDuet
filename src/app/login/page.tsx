@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -50,24 +49,24 @@ export default function LoginPage() {
     
     try {
       await signInWithPopup(auth, provider);
-      toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
+      toast({ title: "Welcome!", description: "Login successful." });
       router.push('/');
     } catch (error: any) {
       console.error("Login error:", error);
-      let errorMessage = "Não foi possível realizar a autenticação.";
+      let errorMessage = "Authentication failed.";
       
       if (error.code === 'auth/operation-not-allowed') {
-        errorMessage = `O provedor ${providerName} não está habilitado no Console do Firebase. Vá em Auth > Sign-in method e ative-o.`;
+        errorMessage = `The ${providerName} provider is not enabled in Firebase Console. Go to Auth > Sign-in method to enable it.`;
         setConfigError(errorMessage);
       } else if (error.code === 'auth/unauthorized-domain') {
-        errorMessage = `Este domínio (${currentDomain}) não está autorizado no Console do Firebase. Copie o endereço abaixo e adicione em Auth > Settings > Authorized Domains no Console do Firebase.`;
+        errorMessage = `This domain (${currentDomain}) is not authorized in Firebase Console. Add it in Auth > Settings > Authorized Domains.`;
         setConfigError(errorMessage);
       } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = "A janela de login foi fechada.";
+        errorMessage = "Login popup was closed.";
       }
       
       toast({ 
-        title: "Erro de Autenticação", 
+        title: "Authentication Error", 
         description: errorMessage,
         variant: "destructive"
       });
@@ -93,13 +92,13 @@ export default function LoginPage() {
       }
       router.push('/');
     } catch (error: any) {
-      let description = "Erro ao autenticar. Verifique seus dados.";
-      if (error.code === 'auth/email-already-in-use') description = "Este e-mail já está em uso.";
-      if (error.code === 'auth/weak-password') description = "A senha deve ter 6+ caracteres.";
-      if (error.code === 'auth/invalid-credential') description = "E-mail ou senha incorretos.";
+      let description = "Error authenticating. Please check your credentials.";
+      if (error.code === 'auth/email-already-in-use') description = "This email is already in use.";
+      if (error.code === 'auth/weak-password') description = "Password must be 6+ characters.";
+      if (error.code === 'auth/invalid-credential') description = "Incorrect email or password.";
 
       toast({ 
-        title: "Erro", 
+        title: "Error", 
         description,
         variant: "destructive"
       });
@@ -110,7 +109,7 @@ export default function LoginPage() {
 
   const copyDomain = () => {
     navigator.clipboard.writeText(currentDomain);
-    toast({ title: "Copiado!", description: "Domínio copiado para sua área de transferência." });
+    toast({ title: "Copied!", description: "Domain copied to clipboard." });
   };
 
   return (
@@ -121,14 +120,14 @@ export default function LoginPage() {
             <ChessLogo className="scale-125" />
           </Link>
           <h2 className="text-2xl font-bold">
-            {isLogin ? "Bem-vindo de volta" : "Crie sua conta"}
+            {isLogin ? "Welcome back" : "Create your account"}
           </h2>
         </div>
 
         {configError && (
           <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive rounded-2xl">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle className="text-xs font-bold uppercase tracking-wider">Ação Necessária no Console</AlertTitle>
+            <AlertTitle className="text-xs font-bold uppercase tracking-wider">Action Required in Console</AlertTitle>
             <AlertDescription className="text-xs space-y-3 mt-2">
               <p>{configError}</p>
               <div className="flex items-center justify-between bg-destructive/10 p-3 rounded-xl border border-destructive/20 mt-2">
@@ -168,7 +167,7 @@ export default function LoginPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-4 text-muted-foreground">Ou e-mail</span>
+                <span className="bg-card px-4 text-muted-foreground">Or email</span>
               </div>
             </div>
           </CardHeader>
@@ -176,10 +175,10 @@ export default function LoginPage() {
             <CardContent className="space-y-4">
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nome Completo</Label>
+                  <Label htmlFor="name">Full Name</Label>
                   <Input 
                     id="name" 
-                    placeholder="Seu nome" 
+                    placeholder="Your name" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="rounded-xl h-11"
@@ -187,11 +186,11 @@ export default function LoginPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input 
                   id="email" 
                   type="email" 
-                  placeholder="exemplo@email.com" 
+                  placeholder="example@email.com" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="rounded-xl h-11"
@@ -199,7 +198,7 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+                <Label htmlFor="password">Password</Label>
                 <Input 
                   id="password" 
                   type="password" 
@@ -212,14 +211,14 @@ export default function LoginPage() {
             </CardContent>
             <CardFooter className="flex flex-col gap-4 pb-8">
               <Button type="submit" className="w-full h-12 text-lg rounded-xl" disabled={isLoading}>
-                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : (isLogin ? "Entrar" : "Cadastrar")}
+                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : (isLogin ? "Sign In" : "Sign Up")}
               </Button>
               <button 
                 type="button"
                 onClick={() => setIsLogin(!isLogin)}
                 className="text-sm text-primary font-semibold hover:underline"
               >
-                {isLogin ? "Não tem conta? Cadastre-se" : "Já tem conta? Faça login"}
+                {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
               </button>
             </CardFooter>
           </form>

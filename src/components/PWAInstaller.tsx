@@ -1,5 +1,4 @@
-
-'use client';
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -39,7 +38,7 @@ export function PWAInstaller() {
       if (outcome === 'accepted') setShowPrompt(false);
       setDeferredPrompt(null);
     } else {
-      alert('Para instalar o ChessDuet:\n\nNo iPhone: Toque em "Compartilhar" e "Adicionar à Tela de Início".\nNo Android: Vá nas opções do navegador e selecione "Instalar Aplicativo".');
+      alert('To install ChessDuet:\n\nOn iPhone: Tap "Share" and "Add to Home Screen".\nOn Android: Go to browser options and select "Install App".');
     }
   };
 
@@ -60,8 +59,8 @@ export function PWAInstaller() {
             <Award className="w-8 h-8" />
           </div>
           <div className="flex-1">
-            <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Instalar ChessDuet</h3>
-            <p className="text-[11px] opacity-90 mt-1 font-bold">Jogue como um app nativo e sem interrupções!</p>
+            <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Install ChessDuet</h3>
+            <p className="text-[11px] opacity-90 mt-1 font-bold">Play like a native app without interruptions!</p>
           </div>
         </div>
 
@@ -73,7 +72,7 @@ export function PWAInstaller() {
           <div className="bg-primary/10 p-1 rounded-lg">
             <Download className="w-5 h-5" />
           </div>
-          INSTALAR AGORA
+          INSTALL NOW
         </Button>
       </div>
     </div>

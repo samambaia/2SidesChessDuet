@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -103,7 +102,7 @@ export default function Home() {
                   {isNavigating ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Iniciando...
+                      Starting...
                     </>
                   ) : (
                     "Play Now"
