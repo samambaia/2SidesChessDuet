@@ -85,7 +85,7 @@ function PlayContent() {
 
       router.push(`/play?room=${newRoomId}`);
       setActiveMode('pvp');
-      toast({ title: "Success!", description: "New online room created." });
+      toast({ title: "Success!", description: "Online room created." });
     } catch (error: any) {
       console.error("Room creation error:", error);
       toast({ 
@@ -113,14 +113,14 @@ function PlayContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      {/* Background Watermark Image */}
+      {/* Background Watermark Image - Increased Opacity */}
       {bgImage && (
-        <div className="absolute inset-0 z-0 opacity-10 pointer-events-none">
+        <div className="absolute inset-0 z-0 opacity-[0.12] pointer-events-none">
           <Image
             src={bgImage.imageUrl}
             alt="Chess background"
             fill
-            className="object-cover grayscale blur-[1px]"
+            className="object-cover grayscale"
             priority
             data-ai-hint="chess board"
           />

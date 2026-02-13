@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from 'react';
@@ -85,11 +86,11 @@ export default function Home() {
           <div className="container px-4 md:px-6 mx-auto">
             <div className="flex flex-col items-center space-y-8 text-center">
               <div className="space-y-4">
-                <h1 className="text-4xl font-bold tracking-tighter sm:text-6xl">
+                <h1 className="text-4xl font-bold tracking-tighter sm:text-6xl uppercase italic">
                   Chess Mastery Simplified
                 </h1>
                 <p className="max-w-[700px] text-muted-foreground md:text-xl mx-auto">
-                  A focused, modern chess experience. Play against AI, friends, or learn the rules in a clean, professional environment.
+                  Powered by 2ides. A focused, modern chess experience for the next generation of masters.
                 </p>
               </div>
               <div className="flex gap-4">
@@ -132,7 +133,7 @@ export default function Home() {
       </main>
 
       <footer className="py-8 border-t text-center text-sm text-muted-foreground bg-accent/5">
-        © {new Date().getFullYear()} ChessDuet. Simple, Elegant, Precise.
+        © {new Date().getFullYear()} 2ides Chess. Precise. Elegant. Professional.
       </footer>
     </div>
   );

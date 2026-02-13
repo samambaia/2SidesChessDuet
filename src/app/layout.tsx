@@ -1,3 +1,4 @@
+
 import type {Metadata, Viewport} from 'next';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase';
@@ -5,13 +6,13 @@ import { Toaster } from '@/components/ui/toaster';
 import { PWAInstaller } from '@/components/PWAInstaller';
 
 export const metadata: Metadata = {
-  title: 'ChessDuet - Play and Learn',
-  description: 'A modern, educational chess experience for parents and children.',
+  title: '2ides Chess - Master the Board',
+  description: 'A professional, modern chess experience for learning and play.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'ChessDuet',
+    title: '2ides Chess',
   },
 };
 
