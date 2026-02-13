@@ -31,9 +31,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  // Usamos um estado para forçar o re-render do tabuleiro quando o objeto game é resetado
   const [game, setGame] = useState(() => new Chess());
-  
   const [board, setBoard] = useState(() => chessJsToBoard(game));
   const [selected, setSelected] = useState<ChessSquare | null>(null);
   const [possibleMoves, setPossibleMoves] = useState<ChessSquare[]>([]);
@@ -119,7 +117,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
     }
     
-    toast({ title: "Jogo Reiniciado", description: "O tabuleiro voltou ao estado inicial." });
+    toast({ title: "Reiniciando...", description: "O tabuleiro está voltando ao estado inicial." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -132,7 +130,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       try {
         currentGame.move(moveStr);
       } catch (e) {
-        // Se a IA falhar, tenta o primeiro movimento legal
         const legalMoves = currentGame.moves();
         if (legalMoves.length > 0) currentGame.move(legalMoves[0]);
       }
@@ -152,12 +149,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const executeMove = async (to: ChessSquare) => {
     if (!selected || isGameOver) return;
     
-    // REGRA DE OURO: O Rei nunca pode ser ocupado por outra peça
+    // REGRA CRÍTICA: Impedir captura do Rei
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
         title: "Movimento Ilegal!", 
-        description: "O Rei nunca pode ser capturado. Você deve cercá-lo para dar Xeque-mate.", 
+        description: "No xadrez, o Rei não pode ser capturado. Você deve dar Xeque-mate para vencer.", 
         variant: "destructive" 
       });
       setSelected(null);
@@ -167,10 +164,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
     try {
       const move = game.move({ from: selected, to, promotion: 'q' });
-      if (!move) {
-        toast({ title: "Ilegal", description: "Esse movimento não é permitido pelas regras do xadrez.", variant: "destructive" });
-        return;
-      }
+      if (!move) return;
 
       setBoard(chessJsToBoard(game));
       setSelected(null);
@@ -183,7 +177,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setTimeout(() => triggerAiMove(game), 600);
       }
     } catch (e) {
-      toast({ title: "Erro", description: "Movimento inválido.", variant: "destructive" });
+      console.error("Move error", e);
     }
   };
 
@@ -191,17 +185,14 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     if (isThinking || isGameOver) return;
     const squareName = getSquareName(r, f);
     
-    // Se clicou em uma casa de movimento possível, executa o movimento
     if (selected && possibleMoves.includes(squareName)) {
       executeMove(squareName);
       return;
     }
 
-    // Seleção de peça
     const piece = game.get(squareName);
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
-      // Filtramos movimentos que capturariam o rei (embora o chess.js não os gere, garantimos aqui)
       const moves = game.moves({ square: squareName, verbose: true })
         .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
         .map(m => m.to as ChessSquare);
@@ -234,8 +225,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     await navigator.clipboard.writeText(inviteUrl);
     
     toast({ 
-      title: "Link Copiado!", 
-      description: "Mande este link público para sua filha!",
+      title: "Link de Convite", 
+      description: "Link público copiado com sucesso.",
     });
   };
 
@@ -258,7 +249,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
             <AlertTitle className="font-black uppercase tracking-widest text-xs">CUIDADO! XEQUE!</AlertTitle>
-            <AlertDescription className="text-[10px] font-medium">Seu Rei está sob ataque!</AlertDescription>
+            <AlertDescription className="text-[10px] font-medium">Proteja seu Rei agora!</AlertDescription>
           </Alert>
         </div>
       )}
@@ -274,7 +265,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         )}>PRETAS</div>
       </div>
 
-      <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800">
+      <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800 touch-none">
         {(isThinking || isGameOver) && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in">
              {isThinking && (
@@ -313,9 +304,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             return (
               <div
                 key={`${r}-${f}`}
-                onClick={() => handleSquareClick(r, f)}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleSquareClick(r, f);
+                }}
                 className={cn(
-                  "chess-square",
+                  "chess-square h-full w-full select-none touch-none",
                   isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
                   isSelected && "bg-[#F5F682]",
                   isPossible && "cursor-pointer",
@@ -330,7 +324,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 )}
                 {piece && (
                   <div className={cn(
-                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-transform active:scale-125",
+                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-transform active:scale-125 select-none pointer-events-none",
                       piece === piece.toUpperCase() ? "text-white drop-shadow-md" : "text-slate-900"
                     )}>
                     {PIECE_ICONS[piece]}
