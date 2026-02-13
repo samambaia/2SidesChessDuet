@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
@@ -50,6 +50,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [hasCopied, setHasCopied] = useState(false);
   const [showResumeDialog, setShowResumeDialog] = useState(false);
   const [savedGameData, setSavedGameData] = useState<any>(null);
+  const [isInCheck, setIsInCheck] = useState(false);
 
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
@@ -93,7 +94,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [board, turn, mode, difficulty, elapsedSeconds, gameId, game]);
 
-  // Lógica para o segundo jogador entrar na sala
   useEffect(() => {
     if (gameId && gameRef && remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
       updateDocumentNonBlocking(gameRef, {
@@ -110,6 +110,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           game.load(remoteGame.fen);
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
+          setIsInCheck(game.inCheck());
         } catch (e) {
           console.error("Erro ao sincronizar FEN remoto:", e);
         }
@@ -118,6 +119,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       game.load(INITIAL_FEN);
       setBoard(chessJsToBoard(game));
       setTurn('w');
+      setIsInCheck(false);
     }
   }, [remoteGame, gameId, game, savedGameData]);
 
@@ -153,7 +155,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       try {
         move = game.move(moveStr);
       } catch (e) {
-        // Fallback: tenta movimento legal se a IA sugerir algo inválido
         const legalMoves = game.moves();
         if (legalMoves.length > 0) {
           game.move(legalMoves[0]);
@@ -164,6 +165,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       if (move) {
         setBoard(chessJsToBoard(game));
         setTurn(game.turn());
+        const inCheck = game.inCheck();
+        setIsInCheck(inCheck);
+        if (inCheck) {
+          toast({
+            title: "Atenção!",
+            description: "Você está em XEQUE! Proteja seu Rei.",
+            variant: "destructive"
+          });
+        }
         syncToFirestore();
       }
     } catch (error: any) {
@@ -207,6 +217,16 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setSelected(null);
       setPossibleMoves([]);
       setTurn(game.turn());
+      const inCheck = game.inCheck();
+      setIsInCheck(inCheck);
+      
+      if (inCheck && !game.isGameOver()) {
+        toast({
+          title: "XEQUE!",
+          description: `O Rei das ${game.turn() === 'w' ? 'Brancas' : 'Pretas'} está sob ataque!`,
+        });
+      }
+
       syncToFirestore();
 
       if (game.isGameOver()) {
@@ -321,6 +341,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setBoard(chessJsToBoard(game));
       setTurn(game.turn());
       setElapsedSeconds(savedGameData.elapsedSeconds || 0);
+      setIsInCheck(game.inCheck());
       toast({ title: "Jogo Retomado", description: "Continuando de onde você parou." });
     }
     setShowResumeDialog(false);
@@ -333,6 +354,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     game.load(INITIAL_FEN);
     setBoard(chessJsToBoard(game));
     setTurn('w');
+    setIsInCheck(false);
   };
 
   return (
@@ -345,9 +367,21 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Ativa</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Convide alguém para jogar usando o botão abaixo. As regras de segurança foram atualizadas para garantir que as jogadas sincronizem sem erros.
+            Convide alguém para jogar usando o botão abaixo. As regras de segurança permitem que o link funcione instantaneamente.
           </AlertDescription>
         </Alert>
+      )}
+
+      {isInCheck && !game.isGameOver() && (
+        <div className="w-full animate-bounce">
+          <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg">
+            <ShieldAlert className="h-5 w-5" />
+            <AlertTitle className="font-black uppercase tracking-widest text-sm">O REI ESTÁ EM XEQUE!</AlertTitle>
+            <AlertDescription className="text-xs font-medium">
+              Sua próxima jogada deve obrigatoriamente proteger o seu Rei.
+            </AlertDescription>
+          </Alert>
+        </div>
       )}
 
       <div className="w-full flex items-center justify-between px-6 py-4 bg-accent/20 rounded-[1.5rem] border border-accent/30 shadow-md backdrop-blur-sm">
@@ -377,11 +411,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       <div className="flex items-center gap-6 mb-2">
         <div className={cn(
           "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
-          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
+          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40",
+          isInCheck && turn === 'w' && "border-destructive text-destructive bg-destructive/5 animate-pulse"
         )}>BRANCAS</div>
         <div className={cn(
           "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
-          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
+          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40",
+          isInCheck && turn === 'b' && "border-destructive text-destructive bg-destructive/5 animate-pulse"
         )}>PRETAS</div>
       </div>
 
@@ -402,6 +438,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             const isSelected = selected === squareName;
             const isPossible = possibleMoves.includes(squareName);
             
+            // Highlight the King if in check
+            const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' && 
+                               ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
+
             return (
               <div
                 key={`${r}-${f}`}
@@ -412,7 +452,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   "chess-square",
                   isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
                   isSelected && "bg-[#F5F682]/80",
-                  isPossible && "cursor-pointer"
+                  isPossible && "cursor-pointer",
+                  isKingInCheck && "bg-destructive/60 animate-pulse"
                 )}
               >
                 {isPossible && (
@@ -468,6 +509,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 setElapsedSeconds(0);
                 setSelected(null);
                 setPossibleMoves([]);
+                setIsInCheck(false);
                 syncToFirestore();
                 localStorage.removeItem(STORAGE_KEY);
               }
