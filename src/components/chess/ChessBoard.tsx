@@ -151,6 +151,16 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       checkGameOverStatus(currentGame);
     } catch (error) {
       console.error("AI Error", error);
+      // Fallback para manter o jogo rodando
+      const legalMoves = currentGame.moves();
+      if (legalMoves.length > 0) {
+        currentGame.move(legalMoves[0]);
+        setBoard(chessJsToBoard(currentGame));
+        setTurn(currentGame.turn());
+        setIsInCheck(currentGame.inCheck());
+        syncToFirestore(currentGame);
+        checkGameOverStatus(currentGame);
+      }
     } finally {
       setIsThinking(false);
     }
@@ -262,8 +272,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const publicDomain = "studio--studio-3509208910-49f15.us-central1.hosted.app";
-    const inviteUrl = `https://${publicDomain}/play?room=${gameId}`;
+    const isWorkstation = window.location.hostname.includes('cloudworkstations.dev') || window.location.hostname.includes('workstations.cloud');
+    const domain = isWorkstation ? "studio--studio-3509208910-49f15.us-central1.hosted.app" : window.location.host;
+    const protocol = window.location.protocol;
+    const inviteUrl = `${protocol}//${domain}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
     toast({ title: "Link Público Copiado!", description: "Envie este link para sua filha jogar." });
   };
