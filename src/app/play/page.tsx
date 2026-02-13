@@ -116,8 +116,8 @@ function PlayContent() {
       {/* Background Watermark Image - Subtle but visible */}
       {bgImage && (
         <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden flex items-center justify-center">
-          <div className="absolute inset-0 bg-background/90 z-10" />
-          <div className="relative w-[120%] h-[120%] rotate-[-15deg] opacity-[0.15] grayscale">
+          <div className="absolute inset-0 bg-background/80 z-10" />
+          <div className="relative w-[120%] h-[120%] rotate-[-15deg] opacity-[0.2] grayscale">
              <Image
               src={bgImage.imageUrl}
               alt="Chess background"
