@@ -113,7 +113,7 @@ function PlayContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      {/* Background Watermark Image - Increased Opacity */}
+      {/* Background Watermark Image - Subtle but visible */}
       {bgImage && (
         <div className="absolute inset-0 z-0 opacity-[0.12] pointer-events-none">
           <Image
