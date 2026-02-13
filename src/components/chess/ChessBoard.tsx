@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chess, Square as ChessSquare } from 'chess.js';
 import { cn } from '@/lib/utils';
 import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareName } from '@/lib/chess-utils';
@@ -27,9 +27,19 @@ interface ChessBoardProps {
   gameId?: string;
 }
 
+interface DragState {
+  square: ChessSquare;
+  piece: string;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const boardRef = useRef<HTMLDivElement>(null);
   
   const [game, setGame] = useState(() => new Chess());
   const [board, setBoard] = useState(() => chessJsToBoard(game));
@@ -42,6 +52,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isInCheck, setIsInCheck] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
+  const [dragState, setDragState] = useState<DragState | null>(null);
 
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
@@ -66,7 +77,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return false;
   }, [toast]);
 
-  // Sincronização com Firestore
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
       const newGame = new Chess(remoteGame.fen);
@@ -78,7 +88,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [remoteGame, checkGameOverStatus, game]);
 
-  // Cronômetro
   useEffect(() => {
     if (isGameOver) return;
     const interval = setInterval(() => setElapsedSeconds(p => p + 1), 1000);
@@ -107,6 +116,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setAnalysis(null);
     setSelected(null);
     setPossibleMoves([]);
+    setDragState(null);
 
     if (gameId && gameRef) {
       updateDocumentNonBlocking(gameRef, {
@@ -117,7 +127,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
     }
     
-    toast({ title: "Reiniciando...", description: "O tabuleiro está voltando ao estado inicial." });
+    toast({ title: "Reiniciando...", description: "Tabuleiro resetado para o início." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -146,24 +156,21 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [difficulty, syncToFirestore, checkGameOverStatus]);
 
-  const executeMove = async (to: ChessSquare) => {
-    if (!selected || isGameOver) return;
+  const executeMove = async (from: ChessSquare, to: ChessSquare) => {
+    if (isGameOver) return;
     
-    // REGRA CRÍTICA: Impedir captura do Rei
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
         title: "Movimento Ilegal!", 
-        description: "No xadrez, o Rei não pode ser capturado. Você deve dar Xeque-mate para vencer.", 
+        description: "O Rei não pode ser capturado. O objetivo é o Xeque-mate!", 
         variant: "destructive" 
       });
-      setSelected(null);
-      setPossibleMoves([]);
       return;
     }
 
     try {
-      const move = game.move({ from: selected, to, promotion: 'q' });
+      const move = game.move({ from, to, promotion: 'q' });
       if (!move) return;
 
       setBoard(chessJsToBoard(game));
@@ -181,26 +188,65 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   };
 
-  const handleSquareClick = (r: number, f: number) => {
+  const handlePointerDown = (e: React.PointerEvent, r: number, f: number) => {
     if (isThinking || isGameOver) return;
     const squareName = getSquareName(r, f);
-    
-    if (selected && possibleMoves.includes(squareName)) {
-      executeMove(squareName);
-      return;
-    }
-
     const piece = game.get(squareName);
+
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
       const moves = game.moves({ square: squareName, verbose: true })
         .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
         .map(m => m.to as ChessSquare);
       setPossibleMoves(moves);
+
+      setDragState({
+        square: squareName,
+        piece: piece.color === 'w' ? piece.type.toUpperCase() : piece.type.toLowerCase(),
+        startX: e.clientX,
+        startY: e.clientY,
+        currentX: e.clientX,
+        currentY: e.clientY,
+      });
+
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
     } else {
-      setSelected(null);
-      setPossibleMoves([]);
+      if (selected && possibleMoves.includes(squareName)) {
+        executeMove(selected, squareName);
+      } else {
+        setSelected(null);
+        setPossibleMoves([]);
+      }
     }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragState) return;
+    setDragState({
+      ...dragState,
+      currentX: e.clientX,
+      currentY: e.clientY,
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragState || !boardRef.current) return;
+
+    const rect = boardRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const f = Math.floor((x / rect.width) * 8);
+    const r = Math.floor((y / rect.height) * 8);
+
+    if (r >= 0 && r < 8 && f >= 0 && f < 8) {
+      const targetSquare = getSquareName(r, f);
+      if (targetSquare !== dragState.square && possibleMoves.includes(targetSquare)) {
+        executeMove(dragState.square, targetSquare);
+      }
+    }
+
+    setDragState(null);
   };
 
   const handleAnalyzeMatch = async () => {
@@ -216,14 +262,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const domain = "https://studio--studio-3509208910-49f15.us-central1.hosted.app";
-    const inviteUrl = `${domain}/play?room=${gameId}`;
+    const publicDomain = "studio--studio-3509208910-49f15.us-central1.hosted.app";
+    const inviteUrl = `https://${publicDomain}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
-    
-    toast({ 
-      title: "Link de Convite", 
-      description: "Link público copiado com sucesso.",
-    });
+    toast({ title: "Link Público Copiado!", description: "Envie este link para sua filha jogar." });
   };
 
   return (
@@ -261,7 +303,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         )}>PRETAS</div>
       </div>
 
-      <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800 touch-none">
+      <div 
+        ref={boardRef}
+        className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800 touch-none select-none"
+      >
         {(isThinking || isGameOver) && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in">
              {isThinking && (
@@ -296,18 +341,18 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             const isPossible = possibleMoves.includes(squareName);
             const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' && 
                                ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
+            const isDraggingThis = dragState?.square === squareName;
 
             return (
               <div
                 key={`${r}-${f}`}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  handleSquareClick(r, f);
-                }}
+                onPointerDown={(e) => handlePointerDown(e, r, f)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
                 className={cn(
-                  "chess-square h-full w-full select-none touch-none cursor-pointer",
+                  "chess-square h-full w-full select-none touch-none cursor-grab active:cursor-grabbing",
                   isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
-                  isSelected && "bg-[#F5F682]",
+                  isSelected && !isDraggingThis && "bg-[#F5F682]",
                   isKingInCheck && "bg-destructive/60 animate-pulse"
                 )}
               >
@@ -318,10 +363,23 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   )} />
                 )}
                 {piece && (
-                  <div className={cn(
-                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-transform active:scale-125 select-none pointer-events-none",
-                      piece === piece.toUpperCase() ? "text-white drop-shadow-md" : "text-slate-900"
-                    )}>
+                  <div 
+                    style={isDraggingThis ? {
+                      position: 'fixed',
+                      left: dragState.currentX,
+                      top: dragState.currentY,
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 100,
+                      pointerEvents: 'none',
+                      width: '80px',
+                      height: '80px',
+                    } : {}}
+                    className={cn(
+                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-transform select-none pointer-events-none",
+                      piece === piece.toUpperCase() ? "text-white drop-shadow-md" : "text-slate-900",
+                      isDraggingThis && "opacity-90 scale-125"
+                    )}
+                  >
                     {PIECE_ICONS[piece]}
                   </div>
                 )}
