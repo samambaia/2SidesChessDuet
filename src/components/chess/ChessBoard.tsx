@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -7,10 +8,10 @@ import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareNam
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, serverTimestamp } from 'firebase/firestore';
+import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import {
   Dialog,
@@ -37,6 +38,7 @@ interface DragState {
 
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
   const { firestore } = useFirestore() ? { firestore: useFirestore() } : { firestore: null };
+  const { user } = useUser();
   const { toast } = useToast();
   const boardRef = useRef<HTMLDivElement>(null);
   
@@ -59,6 +61,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   }, [firestore, gameId]);
 
   const { data: remoteGame } = useDoc(gameRef);
+
+  // Enforce player color in PvP
+  const userColor = remoteGame ? (user?.uid === remoteGame.player1Id ? 'w' : user?.uid === remoteGame.player2Id ? 'b' : null) : 'w';
+  const isMyTurn = mode !== 'pvp' || (remoteGame && remoteGame.turn === userColor);
 
   const checkGameOverStatus = useCallback((currentGame: Chess) => {
     if (currentGame.isGameOver()) {
@@ -169,7 +175,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   }, [difficulty, mode, gameId, gameRef, checkGameOverStatus]);
 
   const executeMove = (from: ChessSquare, to: ChessSquare) => {
-    if (isGameOver || isThinking) return;
+    if (isGameOver || isThinking || !isMyTurn) return;
     
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
@@ -197,11 +203,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handlePointerDown = (e: React.PointerEvent, r: number, f: number) => {
-    if (isThinking || isGameOver) return;
+    if (isThinking || isGameOver || !isMyTurn) return;
     const squareName = getSquareName(r, f);
     const piece = game.get(squareName);
 
-    if (piece && piece.color === game.turn()) {
+    // Only allow moving pieces of your color in PvP
+    if (piece && piece.color === game.turn() && (mode !== 'pvp' || piece.color === userColor)) {
       setSelected(squareName);
       const moves = game.moves({ square: squareName, verbose: true })
         .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
@@ -299,25 +306,41 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
       <div className="flex items-center gap-6 mb-2">
         <div className={cn(
-          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
+          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2 flex flex-col items-center",
           turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
-        )}>WHITE</div>
+        )}>
+          WHITE
+          {userColor === 'w' && <span className="text-[8px] opacity-50">(YOU)</span>}
+        </div>
         <div className={cn(
-          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2",
+          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2 flex flex-col items-center",
           turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
-        )}>BLACK</div>
+        )}>
+          BLACK
+          {userColor === 'b' && <span className="text-[8px] opacity-50">(YOU)</span>}
+        </div>
       </div>
 
       <div 
         ref={boardRef}
         className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800 touch-none select-none"
       >
-        {(isThinking || isGameOver) && (
+        {(isThinking || isGameOver || (mode === 'pvp' && remoteGame && !remoteGame.player2Id)) && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in">
              {isThinking && (
                <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
                   <span className="text-sm font-black uppercase tracking-widest">Thinking...</span>
+               </div>
+             )}
+             {mode === 'pvp' && remoteGame && !remoteGame.player2Id && !isGameOver && (
+               <div className="bg-white/95 px-8 py-6 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+                  <h3 className="text-xl font-black uppercase tracking-tight">Waiting for Opponent</h3>
+                  <p className="text-xs font-bold text-muted-foreground mt-2">Share the link with your daughter!</p>
+                  <Button onClick={handleInvite} variant="outline" size="sm" className="mt-4 rounded-xl gap-2">
+                    <Share2 className="w-3 h-3" /> Copy Link
+                  </Button>
                </div>
              )}
              {isGameOver && (

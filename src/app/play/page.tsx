@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Settings, Brain, Users, BookOpen, ChevronLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth, useFirestore } from '@/firebase';
+import { useAuth, useFirestore, useUser } from '@/firebase';
 import { signInAnonymously } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,7 @@ function PlayContent() {
   const router = useRouter();
   const auth = useAuth();
   const firestore = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   
   const roomFromUrl = searchParams.get('room');
@@ -50,10 +51,27 @@ function PlayContent() {
           console.error("Anonymous login error:", err);
         }
       }
+
+      // If joining a room, register as player 2
+      if (roomFromUrl && firestore && auth.currentUser) {
+        const gameRef = doc(firestore, 'games', roomFromUrl);
+        const gameSnap = await getDoc(gameRef);
+        if (gameSnap.exists()) {
+          const gameData = gameSnap.data();
+          if (gameData.player1Id !== auth.currentUser.uid && !gameData.player2Id) {
+            await updateDoc(gameRef, {
+              player2Id: auth.currentUser.uid,
+              lastUpdated: serverTimestamp()
+            });
+            toast({ title: "Joined Room", description: "You are now playing as Black." });
+          }
+        }
+      }
+
       setIsInitializing(false);
     };
     init();
-  }, [auth]);
+  }, [auth, roomFromUrl, firestore, toast]);
 
   const createRoom = async () => {
     setIsCreating(true);
@@ -85,7 +103,7 @@ function PlayContent() {
 
       router.push(`/play?room=${newRoomId}`);
       setActiveMode('pvp');
-      toast({ title: "Success!", description: "Online room created." });
+      toast({ title: "Success!", description: "Online room created. Share the link!" });
     } catch (error: any) {
       console.error("Room creation error:", error);
       toast({ 
@@ -113,7 +131,6 @@ function PlayContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      {/* Background Watermark Image - Subtle but visible */}
       {bgImage && (
         <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden flex items-center justify-center">
           <div className="absolute inset-0 bg-background/80 z-10" />
@@ -228,7 +245,7 @@ function PlayContent() {
         <div className="mt-8 text-center">
           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Status</p>
           <p className="text-sm font-medium">
-            {roomFromUrl ? `Online Game: ${roomFromUrl}` : activeMode === 'ai' ? 'Playing AI' : 'Learning Mode'}
+            {roomFromUrl ? `Online PvP Game` : activeMode === 'ai' ? 'Playing AI' : 'Learning Mode'}
           </p>
         </div>
       </main>
