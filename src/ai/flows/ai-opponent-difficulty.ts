@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -64,8 +65,8 @@ const aiOpponentDifficultyFlow = ai.defineFlow(
     if (!output?.move) {
       throw new Error("AI failed to generate a move.");
     }
-    // Clean up the response in case the model added extra characters
-    const cleanMove = output.move.trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '');
+    // Limpeza rigorosa: remove qualquer coisa que não seja coordenadas UCI
+    const cleanMove = output.move.trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '').slice(0, 5);
     return { move: cleanMove };
   }
 );

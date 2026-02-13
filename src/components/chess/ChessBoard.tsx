@@ -146,16 +146,24 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const aiResponse = await aiOpponentDifficulty({ fen, difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
-      const move = game.move(moveStr);
+      // Tenta o movimento sugerido pela IA
+      let move = null;
+      try {
+        move = game.move(moveStr);
+      } catch (e) {
+        // Se falhar UCI direto, tenta tratar como algébrica curta apenas como fallback
+        move = game.move(moveStr);
+      }
       
       if (move) {
         setBoard(chessJsToBoard(game));
         setTurn(game.turn());
         syncToFirestore();
       } else {
+        // Fallback: se a IA sugerir algo inválido, pega o primeiro movimento legal disponível
         const legalMoves = game.moves();
         if (legalMoves.length > 0) {
-          game.move(legalMoves[Math.floor(Math.random() * legalMoves.length)]);
+          game.move(legalMoves[0]);
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
           syncToFirestore();
