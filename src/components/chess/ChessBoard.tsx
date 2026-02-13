@@ -9,7 +9,7 @@ import { getMoveFeedback } from '@/ai/flows/learning-mode-move-feedback';
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History, ShieldAlert } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Check, Activity, Award, AlertCircle, History, ShieldAlert, Tally5 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
@@ -51,6 +51,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [showResumeDialog, setShowResumeDialog] = useState(false);
   const [savedGameData, setSavedGameData] = useState<any>(null);
   const [isInCheck, setIsInCheck] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false);
 
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
@@ -58,6 +59,35 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   }, [firestore, gameId]);
 
   const { data: remoteGame } = useDoc(gameRef);
+
+  // Check Game Over status
+  const checkGameOverStatus = useCallback(() => {
+    if (game.isGameOver()) {
+      setIsGameOver(true);
+      let title = "Fim de Jogo";
+      let message = "";
+
+      if (game.isCheckmate()) {
+        const winner = game.turn() === 'w' ? 'Pretas' : 'Brancas';
+        title = "XEQUE-MATE!";
+        message = `As ${winner} venceram a partida cercado o Rei!`;
+      } else if (game.isDraw()) {
+        title = "Empate!";
+        message = game.isStalemate() 
+          ? "Afogamento: O jogador não tem jogadas legais mas não está em xeque."
+          : "A partida terminou empatada por regras do xadrez.";
+      }
+
+      toast({
+        title,
+        description: message,
+        variant: game.isCheckmate() ? "default" : "secondary",
+      });
+      localStorage.removeItem(STORAGE_KEY);
+      return true;
+    }
+    return false;
+  }, [game, toast]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -82,7 +112,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   }, [gameId]);
 
   useEffect(() => {
-    if (!gameId) {
+    if (!gameId && !isGameOver) {
       const state = {
         fen: game.fen(),
         mode,
@@ -92,7 +122,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
-  }, [board, turn, mode, difficulty, elapsedSeconds, gameId, game]);
+  }, [board, turn, mode, difficulty, elapsedSeconds, gameId, game, isGameOver]);
 
   useEffect(() => {
     if (gameId && gameRef && remoteGame && user && !remoteGame.player2Id && remoteGame.player1Id !== user.uid) {
@@ -111,6 +141,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           setBoard(chessJsToBoard(game));
           setTurn(game.turn());
           setIsInCheck(game.inCheck());
+          checkGameOverStatus();
         } catch (e) {
           console.error("Erro ao sincronizar FEN remoto:", e);
         }
@@ -120,16 +151,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setBoard(chessJsToBoard(game));
       setTurn('w');
       setIsInCheck(false);
+      setIsGameOver(false);
     }
-  }, [remoteGame, gameId, game, savedGameData]);
+  }, [remoteGame, gameId, game, savedGameData, checkGameOverStatus]);
 
   useEffect(() => {
-    if (game.isGameOver()) return;
+    if (isGameOver) return;
     const interval = setInterval(() => {
       setElapsedSeconds(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [game]);
+  }, [isGameOver]);
 
   const syncToFirestore = useCallback(() => {
     if (gameId && gameRef) {
@@ -155,6 +187,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       try {
         move = game.move(moveStr);
       } catch (e) {
+        // Fallback para movimento legal se a IA falhar
         const legalMoves = game.moves();
         if (legalMoves.length > 0) {
           game.move(legalMoves[0]);
@@ -167,14 +200,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setTurn(game.turn());
         const inCheck = game.inCheck();
         setIsInCheck(inCheck);
-        if (inCheck) {
+        
+        if (inCheck && !game.isGameOver()) {
           toast({
-            title: "Atenção!",
-            description: "Você está em XEQUE! Proteja seu Rei.",
+            title: "Cuidado!",
+            description: "A IA colocou você em XEQUE!",
             variant: "destructive"
           });
         }
+        
         syncToFirestore();
+        checkGameOverStatus();
       }
     } catch (error: any) {
       toast({ 
@@ -185,11 +221,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, game, syncToFirestore, toast]);
+  }, [difficulty, game, syncToFirestore, toast, checkGameOverStatus]);
 
   const executeMove = async (to: ChessSquare, fromOverride?: ChessSquare) => {
     const from = fromOverride || selected;
-    if (!from) return;
+    if (!from || isGameOver) return;
     
     const uci = `${from}${to}`;
 
@@ -217,34 +253,31 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setSelected(null);
       setPossibleMoves([]);
       setTurn(game.turn());
+      
       const inCheck = game.inCheck();
       setIsInCheck(inCheck);
       
       if (inCheck && !game.isGameOver()) {
         toast({
           title: "XEQUE!",
-          description: `O Rei das ${game.turn() === 'w' ? 'Brancas' : 'Pretas'} está sob ataque!`,
+          description: `O Rei das ${game.turn() === 'w' ? 'Brancas' : 'Pretas'} está em perigo!`,
         });
       }
 
       syncToFirestore();
 
-      if (game.isGameOver()) {
-        const winMessage = game.isCheckmate() 
-          ? `Xeque-mate! As ${move.color === 'w' ? 'Brancas' : 'Pretas'} venceram.`
-          : "A partida terminou empatada.";
-        toast({ title: "Fim de Jogo", description: winMessage });
-        localStorage.removeItem(STORAGE_KEY);
-      } else if (mode === 'ai' && game.turn() === 'b') {
-        setTimeout(triggerAiMove, 500);
+      if (!checkGameOverStatus()) {
+        if (mode === 'ai' && game.turn() === 'b') {
+          setTimeout(triggerAiMove, 500);
+        }
       }
     } catch (e) {
-      toast({ title: "Ops!", description: "Movimento ilegal.", variant: "destructive" });
+      toast({ title: "Ops!", description: "Movimento ilegal. O Rei nunca pode ser capturado ou deixado em xeque.", variant: "destructive" });
     }
   };
 
   const handleSquareClick = (r: number, f: number) => {
-    if (isThinking || game.isGameOver()) return;
+    if (isThinking || isGameOver) return;
     const squareName = getSquareName(r, f);
     if (selected && possibleMoves.includes(squareName)) {
       executeMove(squareName);
@@ -262,7 +295,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleDragStart = (e: React.DragEvent, square: ChessSquare) => {
-    if (isThinking || game.isGameOver()) {
+    if (isThinking || isGameOver) {
       e.preventDefault();
       return;
     }
@@ -342,6 +375,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setTurn(game.turn());
       setElapsedSeconds(savedGameData.elapsedSeconds || 0);
       setIsInCheck(game.inCheck());
+      checkGameOverStatus();
       toast({ title: "Jogo Retomado", description: "Continuando de onde você parou." });
     }
     setShowResumeDialog(false);
@@ -355,6 +389,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setBoard(chessJsToBoard(game));
     setTurn('w');
     setIsInCheck(false);
+    setIsGameOver(false);
   };
 
   return (
@@ -367,18 +402,30 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700">Ativa</Badge>
           </AlertTitle>
           <AlertDescription className="text-[11px] leading-relaxed mt-1">
-            Convide alguém para jogar usando o botão abaixo. As regras de segurança permitem que o link funcione instantaneamente.
+            Convide alguém para jogar usando o botão abaixo.
           </AlertDescription>
         </Alert>
       )}
 
-      {isInCheck && !game.isGameOver() && (
+      {isInCheck && !isGameOver && (
         <div className="w-full animate-bounce">
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg">
             <ShieldAlert className="h-5 w-5" />
-            <AlertTitle className="font-black uppercase tracking-widest text-sm">O REI ESTÁ EM XEQUE!</AlertTitle>
+            <AlertTitle className="font-black uppercase tracking-widest text-sm">REI EM XEQUE!</AlertTitle>
             <AlertDescription className="text-xs font-medium">
-              Sua próxima jogada deve obrigatoriamente proteger o seu Rei.
+              O Rei está sob ataque! Você deve movê-lo ou protegê-lo agora.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {isGameOver && (
+        <div className="w-full">
+          <Alert className="bg-amber-100 border-amber-300 rounded-2xl border-2 shadow-lg">
+            <Award className="h-5 w-5 text-amber-700" />
+            <AlertTitle className="font-black uppercase tracking-widest text-sm text-amber-900">PARTIDA ENCERRADA</AlertTitle>
+            <AlertDescription className="text-xs font-medium text-amber-800">
+              O jogo terminou. Veja a análise abaixo para aprender com seus movimentos.
             </AlertDescription>
           </Alert>
         </div>
@@ -395,7 +442,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           </div>
         </div>
 
-        {gameId && (
+        {gameId && !isGameOver && (
           <Button 
             variant="default" 
             size="sm" 
@@ -422,12 +469,27 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       </div>
 
       <div className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/5">
-        {isThinking && (
-          <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
-             <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-100 animate-in zoom-in-95">
-                <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                <span className="text-sm font-black uppercase tracking-widest text-primary">Pensando...</span>
-             </div>
+        {(isThinking || isGameOver) && (
+          <div className={cn(
+            "absolute inset-0 z-50 flex items-center justify-center",
+            isThinking ? "bg-slate-900/10 backdrop-blur-[2px]" : "bg-slate-900/40 backdrop-blur-[1px]"
+          )}>
+             {isThinking && (
+               <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-100 animate-in zoom-in-95">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <span className="text-sm font-black uppercase tracking-widest text-primary">IA Pensando...</span>
+               </div>
+             )}
+             {isGameOver && (
+               <div className="bg-white/95 p-8 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95">
+                  <Award className="w-12 h-12 text-amber-500 mx-auto mb-2" />
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Partida Finalizada</h2>
+                  <p className="text-sm text-muted-foreground mt-2 mb-6">Explore o feedback da IA abaixo.</p>
+                  <Button onClick={handleAnalyzeMatch} className="rounded-full w-full h-12 gap-2">
+                    <Activity className="w-4 h-4" /> Ver Análise
+                  </Button>
+               </div>
+             )}
           </div>
         )}
         
@@ -464,7 +526,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 )}
                 {piece && (
                   <div 
-                    draggable 
+                    draggable={!isGameOver}
                     onDragStart={(e) => handleDragStart(e, squareName)}
                     className={cn(
                       "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all active:scale-125 touch-none select-none",
@@ -481,7 +543,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       </div>
 
       <div className="flex flex-col gap-4 w-full">
-        {game.isGameOver() && (
+        {isGameOver && (
           <div className="flex flex-col gap-4 p-8 bg-primary/10 border-2 border-primary/20 rounded-[2rem] text-center animate-in zoom-in-95 duration-500 shadow-xl">
             <Award className="w-10 h-10 text-primary mx-auto" />
             <h3 className="text-xl font-black text-primary uppercase">Fim de Partida</h3>
@@ -491,7 +553,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               disabled={isAnalyzing}
             >
               {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
-              {isAnalyzing ? "Analisando..." : "Feedback da IA"}
+              {isAnalyzing ? "Analisando..." : "Feedback do Tutor IA"}
             </Button>
           </div>
         )}
@@ -502,7 +564,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             size="sm" 
             className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest gap-2"
             onClick={() => {
-              if (confirm("Reiniciar partida?")) {
+              if (confirm("Reiniciar partida? Todo o progresso atual será perdido.")) {
                 game.load(INITIAL_FEN);
                 setBoard(chessJsToBoard(game));
                 setTurn('w');
@@ -510,6 +572,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 setSelected(null);
                 setPossibleMoves([]);
                 setIsInCheck(false);
+                setIsGameOver(false);
                 syncToFirestore();
                 localStorage.removeItem(STORAGE_KEY);
               }
