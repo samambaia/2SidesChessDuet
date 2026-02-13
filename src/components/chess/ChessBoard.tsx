@@ -41,6 +41,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const { toast } = useToast();
   const boardRef = useRef<HTMLDivElement>(null);
   
+  // Usamos o FEN como fonte da verdade para o estado do jogo no React
   const [game, setGame] = useState(() => new Chess());
   const [board, setBoard] = useState(() => chessJsToBoard(game));
   const [selected, setSelected] = useState<ChessSquare | null>(null);
@@ -69,6 +70,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       
       if (currentGame.isCheckmate()) {
         message = `As ${currentGame.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram! O Rei não tem mais saída.`;
+      } else if (currentGame.isDraw()) {
+        message = "O jogo terminou em empate (Stalemate ou Regras de 50 lances).";
       }
 
       toast({ title, description: message });
@@ -77,6 +80,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return false;
   }, [toast]);
 
+  // Sincroniza com o Firestore (PvP)
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
       const newGame = new Chess(remoteGame.fen);
@@ -85,8 +89,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setTurn(newGame.turn());
       setIsInCheck(newGame.inCheck());
       checkGameOverStatus(newGame);
+      setIsThinking(false); // Libera o tabuleiro se estava esperando
     }
-  }, [remoteGame, checkGameOverStatus, game]);
+  }, [remoteGame, checkGameOverStatus]);
 
   useEffect(() => {
     if (isGameOver) return;
@@ -94,39 +99,35 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return () => clearInterval(interval);
   }, [isGameOver]);
 
-  const syncToFirestore = useCallback((currentGame: Chess) => {
+  const updateGameState = (newGame: Chess) => {
+    setGame(newGame);
+    setBoard(chessJsToBoard(newGame));
+    setTurn(newGame.turn());
+    setIsInCheck(newGame.inCheck());
+    
     if (gameId && gameRef) {
       updateDocumentNonBlocking(gameRef, {
-        fen: currentGame.fen(),
-        turn: currentGame.turn(),
-        moves: currentGame.history(),
+        fen: newGame.fen(),
+        turn: newGame.turn(),
+        moves: newGame.history(),
         lastUpdated: serverTimestamp()
       });
     }
-  }, [gameId, gameRef]);
+
+    if (!checkGameOverStatus(newGame) && mode === 'ai' && newGame.turn() === 'b') {
+      setTimeout(() => triggerAiMove(newGame), 600);
+    }
+  };
 
   const handleRestart = () => {
     const newGame = new Chess();
-    setGame(newGame);
-    setBoard(chessJsToBoard(newGame));
-    setTurn('w');
-    setIsInCheck(false);
     setIsGameOver(false);
     setElapsedSeconds(0);
     setAnalysis(null);
     setSelected(null);
     setPossibleMoves([]);
     setDragState(null);
-
-    if (gameId && gameRef) {
-      updateDocumentNonBlocking(gameRef, {
-        fen: INITIAL_FEN,
-        turn: 'w',
-        moves: [],
-        lastUpdated: serverTimestamp()
-      });
-    }
-    
+    updateGameState(newGame);
     toast({ title: "Reiniciando...", description: "Tabuleiro resetado para o início." });
   };
 
@@ -137,60 +138,50 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       const aiResponse = await aiOpponentDifficulty({ fen: currentGame.fen(), difficulty });
       const moveStr = aiResponse.move.trim().toLowerCase();
       
+      const nextGame = new Chess(currentGame.fen());
       try {
-        currentGame.move(moveStr);
+        nextGame.move(moveStr);
       } catch (e) {
-        const legalMoves = currentGame.moves();
-        if (legalMoves.length > 0) currentGame.move(legalMoves[0]);
+        const legalMoves = nextGame.moves();
+        if (legalMoves.length > 0) nextGame.move(legalMoves[0]);
       }
       
-      setBoard(chessJsToBoard(currentGame));
-      setTurn(currentGame.turn());
-      setIsInCheck(currentGame.inCheck());
-      syncToFirestore(currentGame);
-      checkGameOverStatus(currentGame);
+      updateGameState(nextGame);
     } catch (error) {
       console.error("AI Error", error);
-      const legalMoves = currentGame.moves();
+      const nextGame = new Chess(currentGame.fen());
+      const legalMoves = nextGame.moves();
       if (legalMoves.length > 0) {
-        currentGame.move(legalMoves[0]);
-        setBoard(chessJsToBoard(currentGame));
-        setTurn(currentGame.turn());
-        setIsInCheck(currentGame.inCheck());
-        syncToFirestore(currentGame);
-        checkGameOverStatus(currentGame);
+        nextGame.move(legalMoves[0]);
+        updateGameState(nextGame);
       }
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, syncToFirestore, checkGameOverStatus]);
+  }, [difficulty, mode, gameId, gameRef, checkGameOverStatus]);
 
   const executeMove = async (from: ChessSquare, to: ChessSquare) => {
-    if (isGameOver) return;
+    if (isGameOver || isThinking) return;
     
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
         title: "Movimento Ilegal!", 
-        description: "O Rei não pode ser capturado. O objetivo é o Xeque-mate!", 
+        description: "O Rei não pode ser capturado. Você deve dar Xeque-mate!", 
         variant: "destructive" 
       });
       return;
     }
 
+    const nextGame = new Chess(game.fen());
     try {
-      const move = game.move({ from, to, promotion: 'q' });
-      if (!move) return;
-
-      setBoard(chessJsToBoard(game));
-      setSelected(null);
-      setPossibleMoves([]);
-      setTurn(game.turn());
-      setIsInCheck(game.inCheck());
-      syncToFirestore(game);
-
-      if (!checkGameOverStatus(game) && mode === 'ai' && game.turn() === 'b') {
-        setTimeout(() => triggerAiMove(game), 600);
+      const move = nextGame.move({ from, to, promotion: 'q' });
+      if (move) {
+        setSelected(null);
+        setPossibleMoves([]);
+        updateGameState(nextGame);
+      } else {
+        toast({ title: "Movimento Inválido", description: "Essa jogada não é permitida pelas regras.", variant: "destructive" });
       }
     } catch (e) {
       console.error("Move error", e);
@@ -202,8 +193,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const squareName = getSquareName(r, f);
     const piece = game.get(squareName);
 
+    // Só permite interagir se for a vez do jogador
     if (piece && piece.color === game.turn()) {
       setSelected(squareName);
+      // Filtra movimentos que tentariam capturar o Rei (chess.js já faz isso, mas garantimos no UI)
       const moves = game.moves({ square: squareName, verbose: true })
         .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
         .map(m => m.to as ChessSquare);
@@ -298,7 +291,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
             <AlertTitle className="font-black uppercase tracking-widest text-xs">CUIDADO! XEQUE!</AlertTitle>
-            <AlertDescription className="text-[10px] font-medium">Proteja seu Rei agora!</AlertDescription>
+            <AlertDescription className="text-[10px] font-medium">Seu Rei está sendo atacado! Proteja-o para continuar.</AlertDescription>
           </Alert>
         </div>
       )}
