@@ -37,7 +37,7 @@ interface DragState {
 }
 
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
-  const firestore = useFirestore();
+  const { firestore } = useFirestore() ? { firestore: useFirestore() } : { firestore: null };
   const { toast } = useToast();
   const boardRef = useRef<HTMLDivElement>(null);
   
@@ -151,7 +151,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       checkGameOverStatus(currentGame);
     } catch (error) {
       console.error("AI Error", error);
-      // Fallback para manter o jogo rodando
       const legalMoves = currentGame.moves();
       if (legalMoves.length > 0) {
         currentGame.move(legalMoves[0]);
