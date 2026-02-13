@@ -185,9 +185,23 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const handleInvite = async () => {
-    const inviteUrl = `${window.location.origin}/play?room=${gameId}`;
+    // Detecta se estamos no ambiente de workstations ou no app público
+    const isWorkstation = window.location.hostname.includes('cloudworkstations.dev') || 
+                         window.location.hostname.includes('workstations.cloud');
+    
+    const domain = isWorkstation 
+      ? 'https://studio--studio-3509208910-49f15.us-central1.hosted.app' 
+      : window.location.origin;
+
+    const inviteUrl = `${domain}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
-    toast({ title: "Link Copiado!", description: "Envie para sua filha entrar na sala." });
+    
+    toast({ 
+      title: "Link Copiado!", 
+      description: isWorkstation 
+        ? "Link público gerado. Mande para sua filha!" 
+        : "Link da sala copiado.",
+    });
   };
 
   return (
