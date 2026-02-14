@@ -8,10 +8,10 @@ import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareNam
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, User } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import {
   Dialog,
@@ -37,7 +37,7 @@ interface DragState {
 }
 
 export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardProps) {
-  const { firestore } = useFirestore() ? { firestore: useFirestore() } : { firestore: null };
+  const firestore = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
   const boardRef = useRef<HTMLDivElement>(null);
@@ -62,9 +62,19 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   const { data: remoteGame } = useDoc(gameRef);
 
-  // Enforce player color in PvP
-  const userColor = remoteGame ? (user?.uid === remoteGame.player1Id ? 'w' : user?.uid === remoteGame.player2Id ? 'b' : null) : 'w';
-  const isMyTurn = mode !== 'pvp' || (remoteGame && remoteGame.turn === userColor);
+  // Enforce player color in PvP safely
+  const userColor = React.useMemo(() => {
+    if (!remoteGame || !user) return 'w'; // Default for local AI
+    if (user.uid === remoteGame.player1Id) return 'w';
+    if (user.uid === remoteGame.player2Id) return 'b';
+    return null; // Spectator
+  }, [remoteGame, user]);
+
+  const isMyTurn = React.useMemo(() => {
+    if (mode !== 'pvp') return game.turn() === 'w'; // In AI mode, user is always white
+    if (!remoteGame) return false;
+    return remoteGame.turn === userColor;
+  }, [mode, remoteGame, userColor, game]);
 
   const checkGameOverStatus = useCallback((currentGame: Chess) => {
     if (currentGame.isGameOver()) {
@@ -74,8 +84,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       
       if (currentGame.isCheckmate()) {
         message = `${currentGame.turn() === 'w' ? 'Black' : 'White'} won! The King has no escape.`;
-      } else if (currentGame.isDraw()) {
-        message = "The game ended in a draw.";
       }
 
       toast({ title, description: message });
@@ -86,13 +94,17 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
-      const newGame = new Chess(remoteGame.fen);
-      setGame(newGame);
-      setBoard(chessJsToBoard(newGame));
-      setTurn(newGame.turn());
-      setIsInCheck(newGame.inCheck());
-      checkGameOverStatus(newGame);
-      setIsThinking(false);
+      try {
+        const newGame = new Chess(remoteGame.fen);
+        setGame(newGame);
+        setBoard(chessJsToBoard(newGame));
+        setTurn(newGame.turn());
+        setIsInCheck(newGame.inCheck());
+        checkGameOverStatus(newGame);
+        setIsThinking(false);
+      } catch (e) {
+        console.error("Sync error", e);
+      }
     }
   }, [remoteGame, checkGameOverStatus]);
 
@@ -145,7 +157,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
     }
 
-    toast({ title: "Game Restarted", description: "The board has been reset to the starting position." });
+    toast({ title: "Game Restarted", description: "The board has been reset." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -195,7 +207,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setPossibleMoves([]);
         updateGameState(nextGame);
       } else {
-        toast({ title: "Invalid Move", description: "This move is not allowed by the rules.", variant: "destructive" });
+        toast({ title: "Invalid Move", description: "This move is not allowed.", variant: "destructive" });
       }
     } catch (e) {
       console.error("Move error", e);
@@ -207,7 +219,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const squareName = getSquareName(r, f);
     const piece = game.get(squareName);
 
-    // Only allow moving pieces of your color in PvP
     if (piece && piece.color === game.turn() && (mode !== 'pvp' || piece.color === userColor)) {
       setSelected(squareName);
       const moves = game.moves({ square: squareName, verbose: true })
@@ -224,7 +235,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         currentY: e.clientY,
       });
 
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      if (e.target instanceof HTMLElement && typeof e.target.setPointerCapture === 'function') {
+        try {
+          e.target.setPointerCapture(e.pointerId);
+        } catch (captureError) {
+          console.warn("Capture failed", captureError);
+        }
+      }
     } else if (selected && possibleMoves.includes(squareName)) {
       executeMove(selected, squareName);
     } else {
@@ -337,7 +354,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                <div className="bg-white/95 px-8 py-6 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95">
                   <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
                   <h3 className="text-xl font-black uppercase tracking-tight">Waiting for Opponent</h3>
-                  <p className="text-xs font-bold text-muted-foreground mt-2">Share the link with your daughter!</p>
+                  <p className="text-xs font-bold text-muted-foreground mt-2">Share the link with your friend!</p>
                   <Button onClick={handleInvite} variant="outline" size="sm" className="mt-4 rounded-xl gap-2">
                     <Share2 className="w-3 h-3" /> Copy Link
                   </Button>
@@ -349,8 +366,8 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                   <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">GAME OVER</h2>
                   <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Great match!</p>
                   <div className="grid gap-2">
-                    <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black">
-                      <Activity className="w-4 h-4" /> AI Feedback
+                    <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black" disabled={isAnalyzing}>
+                      {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />} AI Feedback
                     </Button>
                     <Button variant="ghost" onClick={handleRestart} className="text-xs">
                       Play Again

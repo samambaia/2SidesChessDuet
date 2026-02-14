@@ -31,7 +31,7 @@ function PlayContent() {
   const router = useRouter();
   const auth = useAuth();
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   
   const roomFromUrl = searchParams.get('room');
@@ -42,47 +42,53 @@ function PlayContent() {
 
   const bgImage = PlaceHolderImages.find(img => img.id === 'hero-chess');
 
+  // Initial Auth
   useEffect(() => {
-    const init = async () => {
-      if (auth && !auth.currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.error("Anonymous login error:", err);
-        }
-      }
+    if (auth && !auth.currentUser && !isUserLoading) {
+      signInAnonymously(auth).catch(err => {
+        console.error("Auth error", err);
+      });
+    }
+  }, [auth, isUserLoading]);
 
-      // If joining a room, register as player 2
-      if (roomFromUrl && firestore && auth.currentUser) {
+  // Room Join Logic
+  useEffect(() => {
+    const handleJoinRoom = async () => {
+      if (!roomFromUrl || !firestore || !user) return;
+
+      try {
         const gameRef = doc(firestore, 'games', roomFromUrl);
         const gameSnap = await getDoc(gameRef);
+        
         if (gameSnap.exists()) {
           const gameData = gameSnap.data();
-          if (gameData.player1Id !== auth.currentUser.uid && !gameData.player2Id) {
+          // If the current user is not player 1 and player 2 is empty, join as player 2
+          if (gameData.player1Id !== user.uid && !gameData.player2Id) {
             await updateDoc(gameRef, {
-              player2Id: auth.currentUser.uid,
+              player2Id: user.uid,
               lastUpdated: serverTimestamp()
             });
-            toast({ title: "Joined Room", description: "You are now playing as Black." });
+            toast({ title: "Joined Room", description: "You are playing as Black." });
           }
         }
+      } catch (err) {
+        console.error("Join room error", err);
+      } finally {
+        setIsInitializing(false);
       }
-
-      setIsInitializing(false);
     };
-    init();
-  }, [auth, roomFromUrl, firestore, toast]);
+
+    if (!roomFromUrl) {
+      setIsInitializing(false);
+    } else {
+      handleJoinRoom();
+    }
+  }, [user, roomFromUrl, firestore, toast]);
 
   const createRoom = async () => {
     setIsCreating(true);
     try {
-      if (!auth || !firestore) throw new Error("Services not ready.");
-
-      let currentUser = auth.currentUser;
-      if (!currentUser) {
-        const cred = await signInAnonymously(auth);
-        currentUser = cred.user;
-      }
+      if (!auth || !firestore || !user) throw new Error("Services not ready.");
 
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
@@ -93,7 +99,7 @@ function PlayContent() {
         turn: 'w',
         moves: [],
         startTime: serverTimestamp(),
-        player1Id: currentUser.uid,
+        player1Id: user.uid,
         player2Id: null,
         mode: 'pvp',
         totalTime: 0,
@@ -116,13 +122,13 @@ function PlayContent() {
     }
   };
 
-  if (isInitializing) {
+  if (isInitializing || isUserLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
           <p className="text-sm font-medium text-muted-foreground animate-pulse">
-            Setting up the board...
+            Connecting to 2ides Chess...
           </p>
         </div>
       </div>
@@ -133,8 +139,8 @@ function PlayContent() {
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
       {bgImage && (
         <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden flex items-center justify-center">
-          <div className="absolute inset-0 bg-background/80 z-10" />
-          <div className="relative w-[120%] h-[120%] rotate-[-15deg] opacity-[0.2] grayscale">
+          <div className="absolute inset-0 bg-background/90 z-10" />
+          <div className="relative w-[120%] h-[120%] rotate-[-15deg] opacity-[0.1] grayscale">
              <Image
               src={bgImage.imageUrl}
               alt="Chess background"
