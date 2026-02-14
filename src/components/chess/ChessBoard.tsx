@@ -64,17 +64,18 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   // Enforce player color in PvP safely
   const userColor = React.useMemo(() => {
-    if (!remoteGame || !user) return 'w'; // Default for local AI
+    if (!remoteGame || !user) return 'w'; // Default for local AI (user is white)
     if (user.uid === remoteGame.player1Id) return 'w';
     if (user.uid === remoteGame.player2Id) return 'b';
     return null; // Spectator
   }, [remoteGame, user]);
 
   const isMyTurn = React.useMemo(() => {
-    if (mode !== 'pvp') return game.turn() === 'w'; // In AI mode, user is always white
+    if (!user) return false;
+    if (mode !== 'pvp') return game.turn() === 'w'; 
     if (!remoteGame) return false;
     return remoteGame.turn === userColor;
-  }, [mode, remoteGame, userColor, game]);
+  }, [mode, remoteGame, userColor, game, user]);
 
   const checkGameOverStatus = useCallback((currentGame: Chess) => {
     if (currentGame.isGameOver()) {
@@ -92,6 +93,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return false;
   }, [toast]);
 
+  // Sync with remote state
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
       try {
@@ -157,7 +159,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
     }
 
-    toast({ title: "Game Restarted", description: "The board has been reset." });
+    toast({ title: "Game Restarted", description: "The board has been reset for both players." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -306,7 +308,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
          </div>
          {gameId && !isGameOver && (
            <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> Invite
+             <Share2 className="w-3 h-3" /> Invite Friend
            </Button>
          )}
       </div>
@@ -351,7 +353,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                </div>
              )}
              {mode === 'pvp' && remoteGame && !remoteGame.player2Id && !isGameOver && (
-               <div className="bg-white/95 px-8 py-6 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95">
+               <div className="bg-white/95 px-8 py-6 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 mx-4">
                   <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
                   <h3 className="text-xl font-black uppercase tracking-tight">Waiting for Opponent</h3>
                   <p className="text-xs font-bold text-muted-foreground mt-2">Share the link with your friend!</p>
@@ -441,7 +443,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             className="text-[10px] font-black uppercase tracking-widest gap-2 opacity-50 hover:opacity-100"
             onClick={handleRestart}
           >
-            <RotateCcw className="w-3 h-3" /> Restart Game
+            <RotateCcw className="w-3 h-3" /> Restart Match
           </Button>
       </div>
 
@@ -449,7 +451,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <DialogContent className="max-w-xl rounded-[2.5rem] p-10">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-3xl font-black">
-              <Activity className="w-8 h-8 text-primary" /> Chess Tutor
+              <Activity className="w-8 h-8 text-primary" /> Chess Coach
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-6 mt-8">

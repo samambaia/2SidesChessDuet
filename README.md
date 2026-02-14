@@ -1,3 +1,4 @@
+
 # 2ides Chess
 
 A professional, modern chess experience built with Next.js, Firebase, and Genkit.
@@ -28,3 +29,4 @@ By default, auto-generated repositories may be set to **Private**.
 - **2ides Branding**: Clean interface with professional watermark and styling.
 - **English Localization**: Fully translated for international play.
 - **Watermark**: Subtle 2ides background on the play screen.
+- **PvP Synchronization**: Real-time room joining and turn locking.

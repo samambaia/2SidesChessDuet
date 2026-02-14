@@ -42,7 +42,7 @@ function PlayContent() {
 
   const bgImage = PlaceHolderImages.find(img => img.id === 'hero-chess');
 
-  // Initial Auth
+  // Initial Auth - Ensure user is logged in
   useEffect(() => {
     if (auth && !auth.currentUser && !isUserLoading) {
       signInAnonymously(auth).catch(err => {
@@ -51,7 +51,7 @@ function PlayContent() {
     }
   }, [auth, isUserLoading]);
 
-  // Room Join Logic
+  // Room Join Logic - Wait for user and firestore
   useEffect(() => {
     const handleJoinRoom = async () => {
       if (!roomFromUrl || !firestore || !user) return;
@@ -68,8 +68,12 @@ function PlayContent() {
               player2Id: user.uid,
               lastUpdated: serverTimestamp()
             });
-            toast({ title: "Joined Room", description: "You are playing as Black." });
+            toast({ title: "Joined Room", description: "You are playing as Black pieces." });
           }
+          setActiveMode('pvp');
+        } else {
+          toast({ title: "Room Not Found", description: "This game room no longer exists.", variant: "destructive" });
+          router.push('/play');
         }
       } catch (err) {
         console.error("Join room error", err);
@@ -78,17 +82,21 @@ function PlayContent() {
       }
     };
 
-    if (!roomFromUrl) {
-      setIsInitializing(false);
-    } else {
+    if (roomFromUrl && user && firestore) {
       handleJoinRoom();
+    } else if (!roomFromUrl && !isUserLoading) {
+      setIsInitializing(false);
     }
-  }, [user, roomFromUrl, firestore, toast]);
+  }, [user, roomFromUrl, firestore, toast, router, isUserLoading]);
 
   const createRoom = async () => {
+    if (!user) {
+      toast({ title: "Please Wait", description: "Authenticating..." });
+      return;
+    }
     setIsCreating(true);
     try {
-      if (!auth || !firestore || !user) throw new Error("Services not ready.");
+      if (!auth || !firestore) throw new Error("Services not ready.");
 
       const newRoomId = Math.random().toString(36).substring(2, 9);
       const gameRef = doc(firestore, 'games', newRoomId);
@@ -109,12 +117,12 @@ function PlayContent() {
 
       router.push(`/play?room=${newRoomId}`);
       setActiveMode('pvp');
-      toast({ title: "Success!", description: "Online room created. Share the link!" });
+      toast({ title: "Room Created!", description: "Share the link with your opponent." });
     } catch (error: any) {
       console.error("Room creation error:", error);
       toast({ 
-        title: "Failed to Create Game", 
-        description: "A technical issue occurred. Please try again.", 
+        title: "Error", 
+        description: "Could not create the room. Please try again.", 
         variant: "destructive" 
       });
     } finally {
@@ -140,7 +148,7 @@ function PlayContent() {
       {bgImage && (
         <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden flex items-center justify-center">
           <div className="absolute inset-0 bg-background/90 z-10" />
-          <div className="relative w-[120%] h-[120%] rotate-[-15deg] opacity-[0.1] grayscale">
+          <div className="relative w-[120%] h-[120%] rotate-[-15deg] opacity-[0.07] grayscale">
              <Image
               src={bgImage.imageUrl}
               alt="Chess background"
@@ -249,9 +257,9 @@ function PlayContent() {
           gameId={roomFromUrl || undefined}
         />
         <div className="mt-8 text-center">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Status</p>
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Match Type</p>
           <p className="text-sm font-medium">
-            {roomFromUrl ? `Online PvP Game` : activeMode === 'ai' ? 'Playing AI' : 'Learning Mode'}
+            {roomFromUrl ? `Online PvP Game` : activeMode === 'ai' ? 'Vs AI Engine' : 'AI Learning Mode'}
           </p>
         </div>
       </main>
