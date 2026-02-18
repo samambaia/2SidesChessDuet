@@ -10,25 +10,24 @@ A professional, high-performance chess application built with **Next.js**, **Fir
 - **Official Rule Protection**: Strictly follows FIDE rules, including preventing King capture.
 - **2ides Branding**: Elegant interface with professional watermark and Italian-inspired styling.
 
-## 🛠 Tech Stack
-- **Frontend**: Next.js 15 (App Router), React 19, Tailwind CSS.
-- **UI Components**: ShadCN UI + Lucide Icons.
-- **Backend**: Firebase Auth (Google, GitHub, Email, Anonymous) & Firestore.
-- **AI Logic**: Genkit AI for move analysis and difficulty scaling.
+## 🛠 GitHub Synchronization & Renaming
 
-## 🔗 GitHub Sync Instructions
+### Why is the repo named "studio"?
+The name `studio` is the default project name assigned by the Firebase Studio environment. If you want to change it:
 
-If the Command Palette says the repository already exists but you don't see it:
+1. Go to your repository at `github.com/samambaia/studio`.
+2. Click on the **Settings** tab (the gear icon).
+3. In the **General** section, you will see the **Repository name** field.
+4. Change it to `2ides-Chess` and click **Rename**.
 
-### 1. Check for Private Repositories
-By default, auto-generated repositories are often set to **Private**.
-- Go to [github.com/repositories](https://github.com/settings/repositories).
-- Use the search bar to look for `studio`.
-- Ensure the "Type" filter is set to **"All"** or **"Private"**.
+### How to sync your changes
+- Every time you click the **"Publish"** button in Firebase Studio, your latest code changes are pushed to this repository.
+- If you don't see the repo, it might be set to **Private**. Check your private repositories list on GitHub.
 
-### 2. Source Control Sidebar
-- Click the **Source Control icon** (the three connected circles) in the far-left sidebar of this editor.
-- If it's already linked, you will see a list of changes. Click the **"..."** menu and select **"Push"** to sync your latest code.
+## ♟️ Resilient PvP Testing
+If you leave a game open for a long time (e.g., overnight):
+- The app will automatically attempt to "Force Sync" when you return to the tab.
+- If the board seems stuck, use the **REFRESH** button next to the timer to manually pull the latest state from the database.
 
 ---
 © 2024 2ides Chess. Precise. Elegant. Professional.
