@@ -10,19 +10,25 @@ A professional, high-performance chess application built with **Next.js**, **Fir
 - **Official Rule Protection**: Strictly follows FIDE rules, including preventing King capture.
 - **2ides Branding**: Elegant interface with professional watermark and Italian-inspired styling.
 
-## 🛠 GitHub Synchronization & Renaming
+## 🛠 Breaking the GitHub Loop
 
-### Por que o nome está como "studio"?
-O nome `studio` que você vê na barra lateral é apenas o rótulo padrão do ambiente de trabalho (IDE). Se o sistema criou o repositório com esse nome no GitHub, você pode renomeá-lo facilmente:
+If you are stuck because GitHub says a repository named `studio` already exists (but it points to your other project, **DriveWise**):
 
-1. Vá para o seu repositório no GitHub (ex: `github.com/samambaia/studio`).
-2. Clique na aba **Settings** (o ícone de engrenagem).
-3. Na seção **General**, você verá o campo **Repository name**.
-4. Mude para `2ides-Chess` e clique em **Rename**.
+1. **Rename the Other Project**:
+   - Go to `github.com/samambaia/studio` (which currently opens DriveWise).
+   - Click **Settings** > **General**.
+   - Change the **Repository name** to `DriveWise` and click **Rename**.
+   - This frees up the `studio` name if needed, but more importantly, cleans up the GitHub mapping.
 
-### Como Sincronizar
-- Toda vez que você clica no botão **"Publish"** (Nuvem com seta no topo direito), as alterações são enviadas para o seu GitHub.
-- Se você não encontrar o repositório, verifique a aba **"Private"** no seu perfil do GitHub, pois ele é criado como privado por padrão.
+2. **Reconnect this Project**:
+   - In Firebase Studio, click on the **Project Name** at the top-left.
+   - Select **"Disconnect from GitHub"** if the option exists, then **"Connect to GitHub"**.
+   - Since I updated the `package.json` to `2ides-chess`, it should now suggest creating a repository with this new name.
+
+3. **Use the Command Palette**:
+   - Press `Ctrl + Shift + P`.
+   - Search for `GitHub: Publish to GitHub`.
+   - Now that the name is `2ides-chess`, it will create a fresh repository without conflicting with DriveWise.
 
 ## ♟️ Resilient PvP Testing
 If you leave a game open for a long time (e.g., overnight):
