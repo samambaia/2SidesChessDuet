@@ -2,8 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Download, X, Award } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export function PWAInstaller() {
@@ -46,36 +45,160 @@ export function PWAInstaller() {
   if (!showPrompt) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-[100] animate-in slide-in-from-bottom-full duration-700">
-      <div className="bg-primary text-primary-foreground p-6 rounded-[2.5rem] shadow-2xl flex flex-col gap-4 border-4 border-white/20 backdrop-blur-lg">
-        <button 
-          onClick={() => setShowPrompt(false)}
-          className="absolute top-4 right-4 p-1 hover:bg-white/10 rounded-full transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        
-        <div className="flex items-center gap-4">
-          <div className="bg-white/20 p-3 rounded-2xl">
-            <Award className="w-8 h-8" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Install 2Sides Chess</h3>
-            <p className="text-[11px] opacity-90 mt-1 font-bold">Experience professional play with our native-like app!</p>
-          </div>
-        </div>
+    <>
+      <style>{`
+        @keyframes pwa-slide-up {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pwa-shimmer {
+          0%   { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+        .pwa-popup {
+          animation: pwa-slide-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .pwa-install-btn {
+          background: linear-gradient(
+            90deg,
+            #d97706 0%,
+            #f59e0b 30%,
+            #fbbf24 50%,
+            #f59e0b 70%,
+            #d97706 100%
+          );
+          background-size: 200% auto;
+          animation: pwa-shimmer 3s linear infinite;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .pwa-install-btn:active {
+          transform: scale(0.97);
+        }
+        .pwa-install-btn:hover {
+          box-shadow: 0 0 24px rgba(251, 191, 36, 0.45);
+        }
+        .pwa-close-btn:hover {
+          background: rgba(255,255,255,0.12);
+        }
+      `}</style>
 
-        <Button 
-          onClick={handleInstall}
-          variant="secondary" 
-          className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-primary gap-3 shadow-xl active:scale-95 transition-transform"
+      <div className="fixed bottom-4 left-4 right-4 z-[100] pwa-popup">
+        <div
+          style={{
+            background: 'linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)',
+            border: '1px solid rgba(255,255,255,0.10)',
+            borderRadius: '20px',
+            boxShadow: '0 24px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
+            backdropFilter: 'blur(20px)',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            position: 'relative',
+          }}
         >
-          <div className="bg-primary/10 p-1 rounded-lg">
-            <Download className="w-5 h-5" />
+          {/* Close button */}
+          <button
+            onClick={() => setShowPrompt(false)}
+            className="pwa-close-btn"
+            style={{
+              position: 'absolute',
+              top: '14px',
+              right: '14px',
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(255,255,255,0.5)',
+              transition: 'background 0.2s, color 0.2s',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+
+          {/* Header row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingRight: '24px' }}>
+            {/* Chess icon badge */}
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                fontSize: '26px',
+                lineHeight: 1,
+              }}
+            >
+              ♞
+            </div>
+
+            <div>
+              <p
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 700,
+                  fontSize: '15px',
+                  color: '#f8fafc',
+                  letterSpacing: '-0.01em',
+                  lineHeight: 1.2,
+                  margin: 0,
+                }}
+              >
+                Install 2Sides Chess
+              </p>
+              <p
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: '12px',
+                  color: 'rgba(148,163,184,1)',
+                  marginTop: '3px',
+                  lineHeight: 1.4,
+                }}
+              >
+                Play offline · No browser needed · Faster experience
+              </p>
+            </div>
           </div>
-          INSTALL NOW
-        </Button>
+
+          {/* Install button */}
+          <button
+            onClick={handleInstall}
+            className="pwa-install-btn"
+            style={{
+              width: '100%',
+              height: '48px',
+              borderRadius: '12px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 700,
+              fontSize: '13px',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: '#1c1917',
+            }}
+          >
+            <Download size={16} strokeWidth={2.5} />
+            Install Now
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
