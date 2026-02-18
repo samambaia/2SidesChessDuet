@@ -8,7 +8,7 @@ import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareNam
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
@@ -54,13 +54,14 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [isInCheck, setIsInCheck] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
     return doc(firestore, 'games', gameId);
   }, [firestore, gameId]);
 
-  const { data: remoteGame } = useDoc(gameRef);
+  const { data: remoteGame, isLoading: isRemoteLoading } = useDoc(gameRef);
 
   // Enforce player color in PvP safely
   const userColor = React.useMemo(() => {
@@ -93,9 +94,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return false;
   }, [toast]);
 
-  // Sync with remote state
+  // Resilient Sync: Detect changes and force re-sync if stalled
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
+      setIsSyncing(true);
       try {
         const newGame = new Chess(remoteGame.fen);
         setGame(newGame);
@@ -105,10 +107,12 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         checkGameOverStatus(newGame);
         setIsThinking(false);
       } catch (e) {
-        console.error("Sync error", e);
+        console.error("Critical Sync Error:", e);
+      } finally {
+        setTimeout(() => setIsSyncing(false), 300);
       }
     }
-  }, [remoteGame, checkGameOverStatus]);
+  }, [remoteGame, checkGameOverStatus, game]);
 
   useEffect(() => {
     if (isGameOver) return;
@@ -159,7 +163,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       });
     }
 
-    toast({ title: "Game Restarted", description: "The board has been reset for both players." });
+    toast({ title: "Game Restarted", description: "The match has been reset for everyone." });
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
@@ -176,7 +180,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       }
       updateGameState(nextGame);
     } catch (error) {
-      console.error("AI Error", error);
+      console.error("AI Error:", error);
       const nextGame = new Chess(currentGame.fen());
       const legalMoves = nextGame.moves();
       if (legalMoves.length > 0) {
@@ -189,13 +193,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   }, [difficulty, mode, gameId, gameRef, checkGameOverStatus]);
 
   const executeMove = (from: ChessSquare, to: ChessSquare) => {
-    if (isGameOver || isThinking || !isMyTurn) return;
+    if (isGameOver || isThinking || !isMyTurn || isSyncing) return;
     
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
       toast({ 
-        title: "Illegal Move!", 
-        description: "In chess, you don't capture the King. You must checkmate it!", 
+        title: "Rule Enforcement", 
+        description: "The King cannot be captured. You must achieve Checkmate!", 
         variant: "destructive" 
       });
       return;
@@ -209,15 +213,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         setPossibleMoves([]);
         updateGameState(nextGame);
       } else {
-        toast({ title: "Invalid Move", description: "This move is not allowed.", variant: "destructive" });
+        toast({ title: "Invalid Move", description: "That move violates chess rules.", variant: "destructive" });
       }
     } catch (e) {
-      console.error("Move error", e);
+      console.error("Move execution error:", e);
     }
   };
 
   const handlePointerDown = (e: React.PointerEvent, r: number, f: number) => {
-    if (isThinking || isGameOver || !isMyTurn) return;
+    if (isThinking || isGameOver || !isMyTurn || isSyncing) return;
     const squareName = getSquareName(r, f);
     const piece = game.get(squareName);
 
@@ -241,7 +245,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         try {
           e.target.setPointerCapture(e.pointerId);
         } catch (captureError) {
-          console.warn("Capture failed", captureError);
+          console.warn("Pointer capture failed:", captureError);
         }
       }
     } else if (selected && possibleMoves.includes(squareName)) {
@@ -284,10 +288,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const handleAnalyzeMatch = async () => {
     setIsAnalyzing(true);
     try {
-      const result = await analyzeGameHistory({ gameHistory: game.history().join(', ') || "Short match." });
+      const result = await analyzeGameHistory({ gameHistory: game.history().join(', ') || "A short but intense match." });
       setAnalysis(result);
     } catch (err) {
-      toast({ title: "Analysis error", variant: "destructive" });
+      toast({ title: "AI Coach Error", description: "Failed to analyze the game.", variant: "destructive" });
     } finally {
       setIsAnalyzing(false);
     }
@@ -296,83 +300,83 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const handleInvite = async () => {
     const inviteUrl = `${window.location.origin}/play?room=${gameId}`;
     await navigator.clipboard.writeText(inviteUrl);
-    toast({ title: "Game Link Copied!", description: "Send this to your friend to join the match." });
+    toast({ title: "Invite Copied!", description: "Share this link with your opponent to start." });
   };
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px] animate-in fade-in duration-700">
       <div className="w-full flex justify-between items-center px-4 mb-2">
-         <div className="flex items-center gap-2">
+         <div className="flex items-center gap-3 bg-primary/10 px-4 py-1.5 rounded-full border border-primary/20">
             <Timer className="w-4 h-4 text-primary" />
-            <span className="font-mono font-bold text-lg">{formatTotalTime(elapsedSeconds)}</span>
+            <span className="font-mono font-black text-primary">{formatTotalTime(elapsedSeconds)}</span>
          </div>
          {gameId && !isGameOver && (
-           <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> Invite Friend
+           <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20 hover:bg-primary/5" onClick={handleInvite}>
+             <Share2 className="w-3 h-3" /> INVITE
            </Button>
          )}
       </div>
 
       {isInCheck && !isGameOver && (
         <div className="w-full animate-bounce">
-          <Alert variant="destructive" className="rounded-2xl border-2 shadow-lg bg-destructive/5">
+          <Alert variant="destructive" className="rounded-2xl border-2 shadow-xl bg-destructive/5">
             <ShieldAlert className="h-5 w-5" />
-            <AlertTitle className="font-black uppercase tracking-widest text-xs">CAUTION! CHECK!</AlertTitle>
-            <AlertDescription className="text-[10px] font-medium">Your King is under attack! Protect it now.</AlertDescription>
+            <AlertTitle className="font-black uppercase tracking-widest text-xs">WARNING: CHECK!</AlertTitle>
+            <AlertDescription className="text-[10px] font-bold">Your King is under fire. Defend it at once!</AlertDescription>
           </Alert>
         </div>
       )}
 
       <div className="flex items-center gap-6 mb-2">
         <div className={cn(
-          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2 flex flex-col items-center",
-          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
+          "px-8 py-3 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center",
+          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-2xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
         )}>
           WHITE
-          {userColor === 'w' && <span className="text-[8px] opacity-50">(YOU)</span>}
+          {userColor === 'w' && <span className="text-[8px] font-bold text-primary mt-1">(YOU)</span>}
         </div>
         <div className={cn(
-          "px-6 py-2 rounded-xl text-xs font-black transition-all border-2 flex flex-col items-center",
-          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
+          "px-8 py-3 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center",
+          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-2xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
         )}>
           BLACK
-          {userColor === 'b' && <span className="text-[8px] opacity-50">(YOU)</span>}
+          {userColor === 'b' && <span className="text-[8px] font-bold text-primary mt-1">(YOU)</span>}
         </div>
       </div>
 
       <div 
         ref={boardRef}
-        className="chess-board relative shadow-2xl rounded-2xl overflow-hidden border-8 border-slate-900/10 bg-slate-800 touch-none select-none"
+        className="chess-board relative shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] rounded-3xl overflow-hidden border-[12px] border-slate-900 bg-slate-800 touch-none select-none"
       >
-        {(isThinking || isGameOver || (mode === 'pvp' && remoteGame && !remoteGame.player2Id)) && (
-          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in">
-             {isThinking && (
-               <div className="bg-white/95 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
-                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  <span className="text-sm font-black uppercase tracking-widest">Thinking...</span>
+        {(isThinking || isSyncing || isGameOver || (mode === 'pvp' && remoteGame && !remoteGame.player2Id)) && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[3px] animate-in fade-in">
+             {(isThinking || isSyncing) && (
+               <div className="bg-white/95 px-8 py-4 rounded-3xl shadow-2xl flex items-center gap-4">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  <span className="text-sm font-black uppercase tracking-[0.2em]">{isSyncing ? 'Syncing...' : 'Thinking...'}</span>
                </div>
              )}
              {mode === 'pvp' && remoteGame && !remoteGame.player2Id && !isGameOver && (
-               <div className="bg-white/95 px-8 py-6 rounded-[2rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 mx-4">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-                  <h3 className="text-xl font-black uppercase tracking-tight">Waiting for Opponent</h3>
-                  <p className="text-xs font-bold text-muted-foreground mt-2">Share the link with your friend!</p>
-                  <Button onClick={handleInvite} variant="outline" size="sm" className="mt-4 rounded-xl gap-2">
-                    <Share2 className="w-3 h-3" /> Copy Link
+               <div className="bg-white/95 px-10 py-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 mx-4">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-6" />
+                  <h3 className="text-2xl font-black uppercase tracking-tight italic">Waiting for Opponent</h3>
+                  <p className="text-xs font-bold text-muted-foreground mt-2 max-w-[200px] mx-auto">The match will start as soon as your guest joins.</p>
+                  <Button onClick={handleInvite} variant="default" size="lg" className="mt-8 rounded-2xl gap-3 shadow-xl">
+                    <Share2 className="w-4 h-4" /> COPY GAME LINK
                   </Button>
                </div>
              )}
              {isGameOver && (
-               <div className="bg-white/95 p-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
-                  <Trophy className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-                  <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">GAME OVER</h2>
-                  <p className="text-sm font-bold text-muted-foreground mt-2 mb-6">Great match!</p>
-                  <div className="grid gap-2">
-                    <Button onClick={handleAnalyzeMatch} className="rounded-xl h-12 gap-2 font-black" disabled={isAnalyzing}>
-                      {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />} AI Feedback
+               <div className="bg-white/95 p-12 rounded-[3rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
+                  <Trophy className="w-20 h-20 text-amber-500 mx-auto mb-6 drop-shadow-lg" />
+                  <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic">GAME OVER</h2>
+                  <p className="text-sm font-black text-muted-foreground mt-2 mb-8 uppercase tracking-widest">Victory Awaits!</p>
+                  <div className="grid gap-3">
+                    <Button onClick={handleAnalyzeMatch} size="lg" className="rounded-2xl h-14 gap-3 font-black text-lg" disabled={isAnalyzing}>
+                      {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />} AI COACH REVIEW
                     </Button>
-                    <Button variant="ghost" onClick={handleRestart} className="text-xs">
-                      Play Again
+                    <Button variant="ghost" onClick={handleRestart} className="font-bold text-slate-400 hover:text-slate-900 transition-colors">
+                      Start New Match
                     </Button>
                   </div>
                </div>
@@ -398,15 +402,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 onPointerUp={handlePointerUp}
                 className={cn(
                   "chess-square h-full w-full select-none touch-none cursor-grab active:cursor-grabbing",
-                  isLight ? "bg-[#EBECD0]" : "bg-[#779556]",
-                  isSelected && !isDraggingThis && "bg-[#F5F682]",
-                  isKingInCheck && "bg-destructive/60 animate-pulse"
+                  isLight ? "bg-[#f0d9b5]" : "bg-[#b58863]",
+                  isSelected && !isDraggingThis && "bg-[#fafa7d]",
+                  isKingInCheck && "bg-destructive/70 animate-pulse shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]"
                 )}
               >
                 {isPossible && (
                   <div className={cn(
                     "absolute z-20 rounded-full",
-                    piece ? "inset-0 border-[4px] border-black/10" : "w-4 h-4 bg-black/10"
+                    piece ? "inset-2 border-[6px] border-black/15" : "w-5 h-5 bg-black/15"
                   )} />
                 )}
                 {piece && (
@@ -418,13 +422,13 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                       transform: 'translate(-50%, -50%)',
                       zIndex: 100,
                       pointerEvents: 'none',
-                      width: '80px',
-                      height: '80px',
+                      width: '90px',
+                      height: '90px',
                     } : {}}
                     className={cn(
-                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-transform select-none pointer-events-none",
-                      piece === piece.toUpperCase() ? "text-white drop-shadow-md" : "text-slate-900",
-                      isDraggingThis && "opacity-90 scale-125"
+                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all select-none pointer-events-none drop-shadow-xl",
+                      piece === piece.toUpperCase() ? "text-white" : "text-slate-900",
+                      isDraggingThis && "opacity-95 scale-125 rotate-3"
                     )}
                   >
                     {PIECE_ICONS[piece]}
@@ -436,36 +440,36 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         )}
       </div>
 
-      <div className="w-full flex justify-center gap-4 mt-4">
+      <div className="w-full flex justify-center gap-4 mt-6">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-[10px] font-black uppercase tracking-widest gap-2 opacity-50 hover:opacity-100"
+            className="text-[11px] font-black uppercase tracking-[0.3em] gap-3 opacity-40 hover:opacity-100 transition-opacity bg-accent/10 px-6 rounded-full"
             onClick={handleRestart}
           >
-            <RotateCcw className="w-3 h-3" /> Restart Match
+            <RotateCcw className="w-3 h-3" /> RESET BOARD
           </Button>
       </div>
 
       <Dialog open={!!analysis} onOpenChange={() => setAnalysis(null)}>
-        <DialogContent className="max-w-xl rounded-[2.5rem] p-10">
+        <DialogContent className="max-w-2xl rounded-[3rem] p-12 border-none shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-3 text-3xl font-black">
-              <Activity className="w-8 h-8 text-primary" /> Chess Coach
+            <DialogTitle className="flex items-center gap-4 text-4xl font-black italic">
+              <Activity className="w-10 h-10 text-primary animate-pulse" /> 2ides Coach
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-6 mt-8">
-            <div className="p-6 bg-green-50 rounded-2xl border border-green-100">
-              <h4 className="text-[11px] font-black text-green-700 uppercase mb-2">STRENGTHS</h4>
-              <p className="text-sm text-green-800">{analysis?.strengths}</p>
+          <div className="space-y-8 mt-10">
+            <div className="p-8 bg-green-50/50 rounded-3xl border border-green-100 shadow-sm">
+              <h4 className="text-[12px] font-black text-green-700 uppercase tracking-[0.2em] mb-3">STRENGTHS</h4>
+              <p className="text-base text-green-900 font-medium leading-relaxed">{analysis?.strengths}</p>
             </div>
-            <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
-              <h4 className="text-[11px] font-black text-amber-700 uppercase mb-2">OPPORTUNITIES</h4>
-              <p className="text-sm text-amber-800">{analysis?.weaknesses}</p>
+            <div className="p-8 bg-amber-50/50 rounded-3xl border border-amber-100 shadow-sm">
+              <h4 className="text-[12px] font-black text-amber-700 uppercase tracking-[0.2em] mb-3">OPPORTUNITIES</h4>
+              <p className="text-base text-amber-900 font-medium leading-relaxed">{analysis?.weaknesses}</p>
             </div>
-            <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10">
-              <h4 className="text-[11px] font-black text-primary uppercase mb-2">ASSESSMENT</h4>
-              <p className="text-lg font-bold">{analysis?.overallAssessment}</p>
+            <div className="p-10 bg-primary/5 rounded-[2.5rem] border border-primary/10 shadow-inner">
+              <h4 className="text-[12px] font-black text-primary uppercase tracking-[0.2em] mb-4">FINAL ASSESSMENT</h4>
+              <p className="text-2xl font-black text-slate-900 italic leading-tight">{analysis?.overallAssessment}</p>
             </div>
           </div>
         </DialogContent>
