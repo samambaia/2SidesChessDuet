@@ -493,7 +493,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         <DialogContent className="max-w-2xl rounded-[3rem] p-12 border-none shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-4 text-4xl font-black italic">
-              <Activity className="w-10 h-10 text-primary animate-pulse" /> 2ides Coach
+              <Activity className="w-10 h-10 text-primary animate-pulse" /> 2Sides Coach
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-8 mt-10">

@@ -6,13 +6,13 @@ import { Toaster } from '@/components/ui/toaster';
 import { PWAInstaller } from '@/components/PWAInstaller';
 
 export const metadata: Metadata = {
-  title: '2ides Chess - Master the Board',
+  title: '2Sides Chess - Master the Board',
   description: 'A professional, modern chess experience for learning and play.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '2ides Chess',
+    title: '2Sides Chess',
   },
 };
 

@@ -90,7 +90,7 @@ export default function Home() {
                   Chess Mastery Simplified
                 </h1>
                 <p className="max-w-[700px] text-muted-foreground md:text-xl mx-auto">
-                  Powered by 2ides. A focused, modern chess experience for the next generation of masters.
+                  Powered by 2Sides. A focused, modern chess experience for the next generation of masters.
                 </p>
               </div>
               <div className="flex gap-4">
@@ -133,7 +133,7 @@ export default function Home() {
       </main>
 
       <footer className="py-8 border-t text-center text-sm text-muted-foreground bg-accent/5">
-        © {new Date().getFullYear()} 2ides Chess. Precise. Elegant. Professional.
+        © {new Date().getFullYear()} 2Sides Chess. Precise. Elegant. Professional.
       </footer>
     </div>
   );

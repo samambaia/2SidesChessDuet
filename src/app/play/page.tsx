@@ -136,7 +136,7 @@ function PlayContent() {
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
           <p className="text-sm font-medium text-muted-foreground animate-pulse">
-            Connecting to 2ides Chess...
+            Connecting to 2Sides Chess...
           </p>
         </div>
       </div>

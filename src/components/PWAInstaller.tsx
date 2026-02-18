@@ -39,7 +39,7 @@ export function PWAInstaller() {
       if (outcome === 'accepted') setShowPrompt(false);
       setDeferredPrompt(null);
     } else {
-      alert('To install 2ides Chess:\n\nOn iPhone: Tap "Share" and "Add to Home Screen".\nOn Android: Go to browser options and select "Install App".');
+      alert('To install 2Sides Chess:\n\nOn iPhone: Tap "Share" and "Add to Home Screen".\nOn Android: Go to browser options and select "Install App".');
     }
   };
 
@@ -60,7 +60,7 @@ export function PWAInstaller() {
             <Award className="w-8 h-8" />
           </div>
           <div className="flex-1">
-            <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Install 2ides Chess</h3>
+            <h3 className="font-black uppercase tracking-tight text-lg leading-none italic">Install 2Sides Chess</h3>
             <p className="text-[11px] opacity-90 mt-1 font-bold">Experience professional play with our native-like app!</p>
           </div>
         </div>

@@ -3,8 +3,8 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: '2ides Chess - Professional Play',
-    short_name: '2ides Chess',
+    name: '2Sides Chess - Professional Play',
+    short_name: '2Sides Chess',
     description: 'A clean, modern chess experience for parents and children.',
     start_url: '/',
     display: 'standalone',
