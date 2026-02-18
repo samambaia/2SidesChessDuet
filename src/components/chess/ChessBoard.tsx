@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
-import { doc, serverTimestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import {
   Dialog,
@@ -65,10 +65,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   // Enforce player color in PvP safely
   const userColor = React.useMemo(() => {
-    if (!remoteGame || !user) return 'w'; // Default for local AI (user is white)
+    if (!remoteGame || !user) return 'w'; 
     if (user.uid === remoteGame.player1Id) return 'w';
     if (user.uid === remoteGame.player2Id) return 'b';
-    return null; // Spectator
+    return null; 
   }, [remoteGame, user]);
 
   const isMyTurn = React.useMemo(() => {
@@ -94,7 +94,36 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return false;
   }, [toast]);
 
-  // Resilient Sync: Detect changes and force re-sync if stalled
+  // Handle Focus Re-Sync (Crucial for long matches)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && gameRef) {
+        setIsSyncing(true);
+        try {
+          const snap = await getDoc(gameRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.fen !== game.fen()) {
+              const newGame = new Chess(data.fen);
+              setGame(newGame);
+              setBoard(chessJsToBoard(newGame));
+              setTurn(newGame.turn());
+              setIsInCheck(newGame.inCheck());
+            }
+          }
+        } catch (e) {
+          console.error("Standby re-sync failed", e);
+        } finally {
+          setIsSyncing(false);
+        }
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => window.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [game, gameRef]);
+
+  // Resilient Sync: Detect changes from Firestore
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
       setIsSyncing(true);
@@ -303,6 +332,22 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     toast({ title: "Invite Copied!", description: "Share this link with your opponent to start." });
   };
 
+  const forceResync = async () => {
+    if (!gameRef) return;
+    setIsSyncing(true);
+    const snap = await getDoc(gameRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const newGame = new Chess(data.fen);
+      setGame(newGame);
+      setBoard(chessJsToBoard(newGame));
+      setTurn(newGame.turn());
+      setIsInCheck(newGame.inCheck());
+      toast({ title: "Forced Sync Complete", description: "Board has been updated from the server." });
+    }
+    setIsSyncing(false);
+  };
+
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-[600px] animate-in fade-in duration-700">
       <div className="w-full flex justify-between items-center px-4 mb-2">
@@ -310,11 +355,16 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <Timer className="w-4 h-4 text-primary" />
             <span className="font-mono font-black text-primary">{formatTotalTime(elapsedSeconds)}</span>
          </div>
-         {gameId && !isGameOver && (
-           <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20 hover:bg-primary/5" onClick={handleInvite}>
-             <Share2 className="w-3 h-3" /> INVITE
-           </Button>
-         )}
+         <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="rounded-full h-8 px-3 text-[10px] font-bold" onClick={forceResync}>
+              <RefreshCw className={cn("w-3 h-3 mr-1", isSyncing && "animate-spin")} /> REFRESH
+            </Button>
+            {gameId && !isGameOver && (
+              <Button variant="outline" size="sm" className="rounded-full gap-2 border-primary/20 hover:bg-primary/5 h-8" onClick={handleInvite}>
+                <Share2 className="w-3 h-3" /> INVITE
+              </Button>
+            )}
+         </div>
       </div>
 
       {isInCheck && !isGameOver && (
@@ -477,3 +527,4 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     </div>
   );
 }
+

@@ -18,26 +18,17 @@ A professional, high-performance chess application built with **Next.js**, **Fir
 
 ## 🔗 GitHub Sync Instructions
 
-If you want to move this project to your own account:
+If the Command Palette says the repository already exists but you don't see it:
 
 ### 1. Check for Private Repositories
-By default, auto-generated repositories may be set to **Private**.
+By default, auto-generated repositories are often set to **Private**.
 - Go to [github.com/repositories](https://github.com/settings/repositories).
 - Use the search bar to look for `studio`.
-- Ensure the "Type" filter is set to "All" or "Private".
+- Ensure the "Type" filter is set to **"All"** or **"Private"**.
 
-### 2. Manual Connection
-If the repository isn't appearing:
-1. Open the **Command Palette** (`Ctrl + Shift + P` or `Cmd + Shift + P`).
-2. Type **"GitHub: Publish to GitHub"**.
-3. Authenticate with your account and select a name for your new repo.
-
-### 3. Source Control Sync
-- Click the **Source Control icon** (three connected circles) in the far-left sidebar.
-- Use the **"Publish Branch"** or **"Sync Changes"** button to push the latest code.
-
-## 🏆 Deployment
-The app is optimized for **Firebase App Hosting**. Every time you hit **"Publish"** in the Studio, your changes are deployed and synced to your GitHub repository.
+### 2. Source Control Sidebar
+- Click the **Source Control icon** (the three connected circles) in the far-left sidebar of this editor.
+- If it's already linked, you will see a list of changes. Click the **"..."** menu and select **"Push"** to sync your latest code.
 
 ---
 © 2024 2ides Chess. Precise. Elegant. Professional.
