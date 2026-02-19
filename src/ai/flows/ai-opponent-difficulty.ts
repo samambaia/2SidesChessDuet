@@ -7,8 +7,8 @@
  * The flow takes the current game state and desired difficulty as input and returns the AI's move.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { ai } from '@/ai/genkit';
+import { z } from 'genkit';
 
 const AiOpponentDifficultyInputSchema = z.object({
   fen: z.string().describe('The current board state in Forsyth–Edwards Notation (FEN).'),
@@ -29,8 +29,8 @@ export async function aiOpponentDifficulty(input: AiOpponentDifficultyInput): Pr
 
 const prompt = ai.definePrompt({
   name: 'aiOpponentDifficultyPrompt',
-  input: {schema: AiOpponentDifficultyInputSchema},
-  output: {schema: AiOpponentDifficultyOutputSchema},
+  input: { schema: AiOpponentDifficultyInputSchema },
+  output: { schema: AiOpponentDifficultyOutputSchema },
   prompt: `You are a Grandmaster-level chess engine.
 
 Analyze the current board state provided in FEN and provide the BEST LEGAL move for the active player.
@@ -61,12 +61,21 @@ const aiOpponentDifficultyFlow = ai.defineFlow(
     outputSchema: AiOpponentDifficultyOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    if (!output?.move) {
-      throw new Error("AI failed to generate a move.");
+    try {
+      const { output } = await prompt(input);
+      if (!output?.move) {
+        throw new Error("AI failed to generate a move.");
+      }
+      // Limpeza rigorosa: remove qualquer coisa que não seja coordenadas UCI
+      const cleanMove = output.move.trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '').slice(0, 5);
+      return { move: cleanMove };
+    } catch (err: any) {
+      console.error("AI Flow Execution Error:", {
+        message: err.message,
+        status: err.status,
+        details: err.details
+      });
+      throw err;
     }
-    // Limpeza rigorosa: remove qualquer coisa que não seja coordenadas UCI
-    const cleanMove = output.move.trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '').slice(0, 5);
-    return { move: cleanMove };
   }
 );

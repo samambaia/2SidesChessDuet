@@ -8,7 +8,7 @@ import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareNam
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, RefreshCw } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, RefreshCw, History as HistoryIcon, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp, getDoc } from 'firebase/firestore';
@@ -18,8 +18,20 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+  SheetClose,
+} from "@/components/ui/sheet";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { MoveList } from './MoveList';
+import { uciToMove } from '@/lib/chess-utils';
 
 interface ChessBoardProps {
   difficulty?: 'easy' | 'medium' | 'hard';
@@ -41,9 +53,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const { user } = useUser();
   const { toast } = useToast();
   const boardRef = useRef<HTMLDivElement>(null);
-  
+
   const [game, setGame] = useState(() => new Chess());
-  const [board, setBoard] = useState(() => chessJsToBoard(game));
+  const board = React.useMemo(() => chessJsToBoard(game), [game]);
   const [selected, setSelected] = useState<ChessSquare | null>(null);
   const [possibleMoves, setPossibleMoves] = useState<ChessSquare[]>([]);
   const [turn, setTurn] = useState<'w' | 'b'>('w');
@@ -55,6 +67,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [isGameOver, setIsGameOver] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [history, setHistory] = useState<string[]>([]);
 
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
@@ -65,15 +78,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   // Enforce player color in PvP safely
   const userColor = React.useMemo(() => {
-    if (!remoteGame || !user) return 'w'; 
+    if (!remoteGame || !user) return 'w';
     if (user.uid === remoteGame.player1Id) return 'w';
     if (user.uid === remoteGame.player2Id) return 'b';
-    return null; 
+    return null;
   }, [remoteGame, user]);
 
   const isMyTurn = React.useMemo(() => {
     if (!user) return false;
-    if (mode !== 'pvp') return game.turn() === 'w'; 
+    if (mode !== 'pvp') return game.turn() === 'w';
     if (!remoteGame) return false;
     return remoteGame.turn === (userColor || 'w');
   }, [mode, remoteGame, userColor, game, user]);
@@ -83,7 +96,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       setIsGameOver(true);
       const title = currentGame.isCheckmate() ? "CHECKMATE!" : "GAME OVER";
       let message = "The game ended in a draw.";
-      
+
       if (currentGame.isCheckmate()) {
         message = `${currentGame.turn() === 'w' ? 'Black' : 'White'} won! The King has no escape.`;
       }
@@ -103,7 +116,6 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
         const data = snap.data();
         const newGame = new Chess(data.fen);
         setGame(newGame);
-        setBoard(chessJsToBoard(newGame));
         setTurn(newGame.turn());
         setIsInCheck(newGame.inCheck());
         checkGameOverStatus(newGame);
@@ -134,9 +146,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       try {
         const newGame = new Chess(remoteGame.fen);
         setGame(newGame);
-        setBoard(chessJsToBoard(newGame));
         setTurn(newGame.turn());
         setIsInCheck(newGame.inCheck());
+        setHistory(remoteGame.moves || []);
         checkGameOverStatus(newGame);
         setIsThinking(false);
       } catch (e) {
@@ -153,25 +165,26 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return () => clearInterval(interval);
   }, [isGameOver]);
 
-  const updateGameState = (newGame: Chess) => {
+  const updateGameState = useCallback((newGame: Chess, lastMove?: string) => {
     setGame(newGame);
-    setBoard(chessJsToBoard(newGame));
     setTurn(newGame.turn());
     setIsInCheck(newGame.inCheck());
-    
+
+    if (lastMove) {
+      setHistory(prev => [...prev, lastMove]);
+    }
+
     if (gameId && gameRef) {
       updateDocumentNonBlocking(gameRef, {
         fen: newGame.fen(),
         turn: newGame.turn(),
-        moves: newGame.history(),
+        moves: lastMove
+          ? [...(remoteGame?.moves || history), lastMove]
+          : newGame.history(),
         lastUpdated: serverTimestamp()
       });
     }
-
-    if (!checkGameOverStatus(newGame) && mode === 'ai' && newGame.turn() === 'b') {
-      setTimeout(() => triggerAiMove(newGame), 600);
-    }
-  };
+  }, [gameId, gameRef, remoteGame?.moves, history]);
 
   const handleRestart = () => {
     const newGame = new Chess();
@@ -181,9 +194,9 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     setSelected(null);
     setPossibleMoves([]);
     setDragState(null);
-    
+    setHistory([]);
+
     setGame(newGame);
-    setBoard(chessJsToBoard(newGame));
     setTurn('w');
     setIsInCheck(false);
 
@@ -200,40 +213,85 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   const triggerAiMove = useCallback(async (currentGame: Chess) => {
-    if (currentGame.isGameOver()) return;
+    if (currentGame.isGameOver() || isThinking) return;
     setIsThinking(true);
     try {
       const aiResponse = await aiOpponentDifficulty({ fen: currentGame.fen(), difficulty });
       const nextGame = new Chess(currentGame.fen());
+
+      let moveResult = null;
       try {
-        nextGame.move(aiResponse.move);
+        if (aiResponse.move.length >= 4) {
+          const { from, to } = uciToMove(aiResponse.move);
+          const promotion = aiResponse.move.length === 5 ? aiResponse.move[4] : 'q';
+          moveResult = nextGame.move({ from, to, promotion });
+        } else {
+          moveResult = nextGame.move(aiResponse.move);
+        }
       } catch (e) {
+        console.warn("AI preferred move failed, using fallback:", aiResponse.move);
         const legalMoves = nextGame.moves();
-        if (legalMoves.length > 0) nextGame.move(legalMoves[0]);
+        if (legalMoves.length > 0) {
+          moveResult = nextGame.move(legalMoves[0]);
+        }
       }
-      updateGameState(nextGame);
-    } catch (error) {
+
+      if (moveResult) {
+        // Force a new instance to ensure state update
+        const finalGame = new Chess(nextGame.fen());
+        updateGameState(finalGame, moveResult.san);
+        checkGameOverStatus(finalGame);
+      }
+    } catch (error: any) {
       console.error("AI Error:", error);
-      const nextGame = new Chess(currentGame.fen());
-      const legalMoves = nextGame.moves();
+
+      const isRateLimit = error?.message?.includes('429') || error?.message?.toLowerCase().includes('quota');
+      const isNotFound = error?.message?.includes('404');
+
+      if (isRateLimit) {
+        toast({
+          title: "AI is Exhausted",
+          description: "Rate limit reached. Playing a fallback move while the AI rests.",
+          variant: "destructive"
+        });
+      } else if (isNotFound) {
+        toast({
+          title: "AI Not Found",
+          description: "The AI engine is currently unavailable. Playing a fallback move.",
+          variant: "destructive"
+        });
+      }
+
+      const fallbackGame = new Chess(currentGame.fen());
+      const legalMoves = fallbackGame.moves({ verbose: true });
       if (legalMoves.length > 0) {
-        nextGame.move(legalMoves[0]);
-        updateGameState(nextGame);
+        // Simple fallback: pick first move or random move
+        const moveResult = fallbackGame.move(legalMoves[Math.floor(Math.random() * legalMoves.length)]);
+        updateGameState(fallbackGame, moveResult.san);
+        checkGameOverStatus(fallbackGame);
       }
     } finally {
       setIsThinking(false);
     }
-  }, [difficulty, mode, gameId, gameRef, checkGameOverStatus]);
+  }, [difficulty, isThinking, updateGameState, checkGameOverStatus]);
+
+  // Trigger AI move when it's black's turn in AI mode
+  useEffect(() => {
+    if (mode === 'ai' && turn === 'b' && !isGameOver && !isThinking && !isSyncing) {
+      const timer = setTimeout(() => triggerAiMove(game), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [turn, mode, isGameOver, isThinking, isSyncing, game, triggerAiMove]);
 
   const executeMove = (from: ChessSquare, to: ChessSquare) => {
     if (isGameOver || isThinking || !isMyTurn || isSyncing) return;
-    
+
     const targetPiece = game.get(to);
     if (targetPiece && targetPiece.type === 'k') {
-      toast({ 
-        title: "Rule Enforcement", 
-        description: "The King cannot be captured. You must achieve Checkmate!", 
-        variant: "destructive" 
+      toast({
+        title: "Rule Enforcement",
+        description: "The King cannot be captured. You must achieve Checkmate!",
+        variant: "destructive"
       });
       return;
     }
@@ -244,7 +302,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       if (move) {
         setSelected(null);
         setPossibleMoves([]);
-        updateGameState(nextGame);
+        updateGameState(nextGame, move.san);
       } else {
         toast({ title: "Invalid Move", description: "That move violates chess rules.", variant: "destructive" });
       }
@@ -304,7 +362,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const rect = boardRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     const f = Math.floor((x / rect.width) * 8);
     const r = Math.floor((y / rect.height) * 8);
 
@@ -323,8 +381,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     try {
       const result = await analyzeGameHistory({ gameHistory: game.history().join(', ') || "A short but intense match." });
       setAnalysis(result);
-    } catch (err) {
-      toast({ title: "AI Coach Error", description: "Failed to analyze the game.", variant: "destructive" });
+    } catch (err: any) {
+      console.error("Analysis Error:", err);
+      const isRateLimit = err?.message?.includes('429') || err?.message?.toLowerCase().includes('quota');
+
+      toast({
+        title: isRateLimit ? "Coach is Busy" : "AI Coach Error",
+        description: isRateLimit ? "Rate limit reached. Please wait a minute before requesting another analysis." : "Failed to analyze the game.",
+        variant: "destructive"
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -337,13 +402,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   };
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-[600px] animate-in fade-in duration-700">
-      <div className="w-full flex justify-between items-center px-4 mb-2">
-         <div className="flex items-center gap-3 bg-primary/10 px-4 py-1.5 rounded-full border border-primary/20">
+    <div className="flex flex-col lg:flex-row items-start justify-center gap-12 w-full max-w-[1200px] px-4 animate-in fade-in duration-700">
+      {/* Board Column */}
+      <div className="flex flex-col items-center gap-6 w-full max-w-[600px]">
+        <div className="w-full flex justify-between items-center px-4 mb-2">
+          <div className="flex items-center gap-3 bg-primary/10 px-4 py-1.5 rounded-full border border-primary/20">
             <Timer className="w-4 h-4 text-primary" />
             <span className="font-mono font-black text-primary">{formatTotalTime(elapsedSeconds)}</span>
-         </div>
-         <div className="flex gap-2">
+          </div>
+          <div className="flex gap-2">
             <Button variant="ghost" size="sm" className="rounded-full h-8 px-3 text-[10px] font-bold" onClick={forceResync} disabled={isSyncing}>
               <RefreshCw className={cn("w-3 h-3 mr-1", isSyncing && "animate-spin")} /> REFRESH
             </Button>
@@ -352,60 +419,60 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                 <Share2 className="w-3 h-3" /> INVITE
               </Button>
             )}
-         </div>
-      </div>
-
-      {isInCheck && !isGameOver && (
-        <div className="w-full animate-bounce">
-          <Alert variant="destructive" className="rounded-2xl border-2 shadow-xl bg-destructive/5">
-            <ShieldAlert className="h-5 w-5" />
-            <AlertTitle className="font-black uppercase tracking-widest text-xs">WARNING: CHECK!</AlertTitle>
-            <AlertDescription className="text-[10px] font-bold">Your King is under fire. Defend it at once!</AlertDescription>
-          </Alert>
+          </div>
         </div>
-      )}
 
-      <div className="flex items-center gap-6 mb-2">
-        <div className={cn(
-          "px-8 py-3 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center",
-          turn === 'w' ? "bg-white text-slate-900 border-primary shadow-2xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
-        )}>
-          WHITE
-          {userColor === 'w' && <span className="text-[8px] font-bold text-primary mt-1">(YOU)</span>}
-        </div>
-        <div className={cn(
-          "px-8 py-3 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center",
-          turn === 'b' ? "bg-slate-900 text-white border-primary shadow-2xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
-        )}>
-          BLACK
-          {userColor === 'b' && <span className="text-[8px] font-bold text-primary mt-1">(YOU)</span>}
-        </div>
-      </div>
+        {isInCheck && !isGameOver && (
+          <div className="w-full animate-bounce">
+            <Alert variant="destructive" className="rounded-2xl border-2 shadow-xl bg-destructive/5">
+              <ShieldAlert className="h-5 w-5" />
+              <AlertTitle className="font-black uppercase tracking-widest text-xs">WARNING: CHECK!</AlertTitle>
+              <AlertDescription className="text-[10px] font-bold">Your King is under fire. Defend it at once!</AlertDescription>
+            </Alert>
+          </div>
+        )}
 
-      <div 
-        ref={boardRef}
-        className="chess-board relative shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] rounded-3xl overflow-hidden border-[12px] border-slate-900 bg-slate-800 touch-none select-none"
-      >
-        {(isThinking || isSyncing || isGameOver || (mode === 'pvp' && remoteGame && !remoteGame.player2Id)) && (
-          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[3px] animate-in fade-in">
-             {(isThinking || isSyncing) && (
-               <div className="bg-white/95 px-8 py-4 rounded-3xl shadow-2xl flex items-center gap-4">
+        <div className="flex items-center gap-6 mb-2">
+          <div className={cn(
+            "px-8 py-3 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center",
+            turn === 'w' ? "bg-white text-slate-900 border-primary shadow-2xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
+          )}>
+            WHITE
+            {userColor === 'w' && <span className="text-[8px] font-bold text-primary mt-1">(YOU)</span>}
+          </div>
+          <div className={cn(
+            "px-8 py-3 rounded-2xl text-xs font-black transition-all border-2 flex flex-col items-center",
+            turn === 'b' ? "bg-slate-900 text-white border-primary shadow-2xl scale-110" : "bg-slate-200/50 text-slate-400 border-transparent opacity-40"
+          )}>
+            BLACK
+            {userColor === 'b' && <span className="text-[8px] font-bold text-primary mt-1">(YOU)</span>}
+          </div>
+        </div>
+
+        <div
+          ref={boardRef}
+          className="chess-board relative shadow-[0_35px_60px_-15px_rgba(0,0,0,0.5)] rounded-[2.5rem] overflow-hidden border-[12px] border-slate-950 bg-slate-900 touch-none select-none w-full aspect-square"
+        >
+          {(isThinking || isSyncing || isGameOver || (mode === 'pvp' && remoteGame && !remoteGame.player2Id)) && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[3px] animate-in fade-in">
+              {(isThinking || isSyncing) && (
+                <div className="bg-white/95 px-8 py-4 rounded-3xl shadow-2xl flex items-center gap-4">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   <span className="text-sm font-black uppercase tracking-[0.2em]">{isSyncing ? 'Syncing...' : 'Thinking...'}</span>
-               </div>
-             )}
-             {mode === 'pvp' && remoteGame && !remoteGame.player2Id && !isGameOver && (
-               <div className="bg-white/95 px-10 py-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 mx-4">
+                </div>
+              )}
+              {mode === 'pvp' && remoteGame && !remoteGame.player2Id && !isGameOver && (
+                <div className="bg-white/95 px-10 py-8 rounded-[2.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 mx-4">
                   <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-6" />
                   <h3 className="text-2xl font-black uppercase tracking-tight italic">Waiting for Opponent</h3>
                   <p className="text-xs font-bold text-muted-foreground mt-2 max-w-[200px] mx-auto">The match will start as soon as your guest joins.</p>
                   <Button onClick={handleInvite} variant="default" size="lg" className="mt-8 rounded-2xl gap-3 shadow-xl">
                     <Share2 className="w-4 h-4" /> COPY GAME LINK
                   </Button>
-               </div>
-             )}
-             {isGameOver && (
-               <div className="bg-white/95 p-12 rounded-[3rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
+                </div>
+              )}
+              {isGameOver && (
+                <div className="bg-white/95 p-12 rounded-[3rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 scale-110">
                   <Trophy className="w-20 h-20 text-amber-500 mx-auto mb-6 drop-shadow-lg" />
                   <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic">GAME OVER</h2>
                   <p className="text-sm font-black text-muted-foreground mt-2 mb-8 uppercase tracking-widest">Victory Awaits!</p>
@@ -417,76 +484,105 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                       Start New Match
                     </Button>
                   </div>
-               </div>
-             )}
-          </div>
-        )}
-        
-        {board.map((row, r) => 
-          row.map((piece, f) => {
-            const squareName = getSquareName(r, f);
-            const isLight = (r + f) % 2 === 0;
-            const isSelected = selected === squareName;
-            const isPossible = possibleMoves.includes(squareName);
-            const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' && 
-                               ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
-            const isDraggingThis = dragState?.square === squareName;
+                </div>
+              )}
+            </div>
+          )}
 
-            return (
-              <div
-                key={`${r}-${f}`}
-                onPointerDown={(e) => handlePointerDown(e, r, f)}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                className={cn(
-                  "chess-square h-full w-full select-none touch-none cursor-grab active:cursor-grabbing",
-                  isLight ? "bg-[#f0d9b5]" : "bg-[#b58863]",
-                  isSelected && !isDraggingThis && "bg-[#fafa7d]",
-                  isKingInCheck && "bg-destructive/70 animate-pulse shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]"
-                )}
-              >
-                {isPossible && (
-                  <div className={cn(
-                    "absolute z-20 rounded-full",
-                    piece ? "inset-2 border-[6px] border-black/15" : "w-5 h-5 bg-black/15"
-                  )} />
-                )}
-                {piece && (
-                  <div 
-                    style={isDraggingThis ? {
-                      position: 'fixed',
-                      left: dragState.currentX,
-                      top: dragState.currentY,
-                      transform: 'translate(-50%, -50%)',
-                      zIndex: 100,
-                      pointerEvents: 'none',
-                      width: '90px',
-                      height: '90px',
-                    } : {}}
-                    className={cn(
-                      "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all select-none pointer-events-none drop-shadow-xl",
-                      piece === piece.toUpperCase() ? "text-white" : "text-slate-900",
-                      isDraggingThis && "opacity-95 scale-125 rotate-3"
-                    )}
-                  >
-                    {PIECE_ICONS[piece]}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+          {board.map((row, r) =>
+            row.map((piece, f) => {
+              const squareName = getSquareName(r, f);
+              const isLight = (r + f) % 2 === 0;
+              const isSelected = selected === squareName;
+              const isPossible = possibleMoves.includes(squareName);
+              const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' &&
+                ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
+              const isDraggingThis = dragState?.square === squareName;
 
-      <div className="w-full flex justify-center gap-4 mt-6">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-[11px] font-black uppercase tracking-[0.3em] gap-3 opacity-40 hover:opacity-100 transition-opacity bg-accent/10 px-6 rounded-full"
+              return (
+                <div
+                  key={`${r}-${f}`}
+                  onPointerDown={(e) => handlePointerDown(e, r, f)}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  className={cn(
+                    "chess-square h-full w-full select-none touch-none cursor-grab active:cursor-grabbing relative flex items-center justify-center transition-colors duration-200",
+                    isLight ? "bg-[#f0d9b5]" : "bg-[#b58863]",
+                    isSelected && !isDraggingThis && "bg-[#fafa7d] ring-4 ring-inset ring-white/30",
+                    isKingInCheck && "bg-rose-500/80 animate-pulse shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]"
+                  )}
+                >
+                  {isPossible && (
+                    <div className={cn(
+                      "absolute z-20 rounded-full",
+                      piece ? "inset-2 border-[6px] border-black/15" : "w-5 h-5 bg-black/15 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                    )} />
+                  )}
+                  {piece && (
+                    <div
+                      style={isDraggingThis ? {
+                        position: 'fixed',
+                        left: dragState.currentX,
+                        top: dragState.currentY,
+                        transform: 'translate(-50%, -50%)',
+                        zIndex: 100,
+                        pointerEvents: 'none',
+                        width: '90px',
+                        height: '90px',
+                      } : {}}
+                      className={cn(
+                        "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all select-none pointer-events-none w-full h-full",
+                        piece === piece.toUpperCase() ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" : "text-slate-950 drop-shadow-[0_2px_1px_rgba(255,255,255,0.2)]",
+                        isDraggingThis && "opacity-80 scale-125 rotate-3 z-[100]"
+                      )}
+                    >
+                      {PIECE_ICONS[piece]}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="w-full flex justify-center items-center gap-6 mt-8">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-[10px] font-black uppercase tracking-[0.3em] gap-3 opacity-30 hover:opacity-100 transition-all bg-white/5 hover:bg-white/10 px-6 h-10 rounded-full"
             onClick={handleRestart}
           >
             <RotateCcw className="w-3 h-3" /> RESET BOARD
           </Button>
+
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="w-12 h-12 rounded-2xl bg-primary/10 border-primary/20 hover:bg-primary/20 transition-all shadow-lg group"
+              >
+                <HistoryIcon className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:max-w-md p-0 border-l border-white/10 bg-slate-950/95 backdrop-blur-2xl flex flex-col">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Game History</SheetTitle>
+                <SheetDescription>A detailed list of all moves made in this match.</SheetDescription>
+              </SheetHeader>
+              <div className="p-4 sm:hidden border-b border-white/5">
+                <SheetClose asChild>
+                  <Button variant="ghost" className="w-full justify-start gap-4 text-white font-black uppercase tracking-[0.2em] h-14 rounded-2xl">
+                    <ChevronLeft className="w-5 h-5" /> BACK TO BOARD
+                  </Button>
+                </SheetClose>
+              </div>
+              <div className="flex-1 overflow-hidden p-6">
+                <MoveList moves={history} mode={mode} />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
 
       <Dialog open={!!analysis} onOpenChange={() => setAnalysis(null)}>
@@ -495,6 +591,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
             <DialogTitle className="flex items-center gap-4 text-4xl font-black italic">
               <Activity className="w-10 h-10 text-primary animate-pulse" /> 2Sides Coach
             </DialogTitle>
+            <DialogDescription className="sr-only">AI analysis of your chess match performance.</DialogDescription>
           </DialogHeader>
           <div className="space-y-8 mt-10">
             <div className="p-8 bg-green-50/50 rounded-3xl border border-green-100 shadow-sm">
