@@ -8,7 +8,8 @@ import { INITIAL_FEN, PIECE_ICONS, formatTotalTime, chessJsToBoard, getSquareNam
 import { aiOpponentDifficulty } from '@/ai/flows/ai-opponent-difficulty';
 import { analyzeGameHistory, type AnalyzeGameHistoryOutput } from '@/ai/flows/analyze-game-history';
 import { Button } from '@/components/ui/button';
-import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, RefreshCw, History as HistoryIcon, ChevronLeft } from 'lucide-react';
+import { Loader2, RotateCcw, Timer, Share2, Activity, ShieldAlert, Trophy, RefreshCw, History as HistoryIcon, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import { doc, serverTimestamp, getDoc } from 'firebase/firestore';
@@ -68,6 +69,10 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [focusBoardSize, setFocusBoardSize] = useState(0);
+  const lastTurnRef = useRef<'w' | 'b' | null>(null);
 
   const gameRef = useMemoFirebase(() => {
     if (!firestore || !gameId) return null;
@@ -78,17 +83,20 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
 
   // Enforce player color in PvP safely
   const userColor = React.useMemo(() => {
-    if (!remoteGame || !user) return 'w';
+    if (mode !== 'pvp') return 'w'; // Always white in AI/Learning unless we add side selection
+    if (!remoteGame || !user) return null;
     if (user.uid === remoteGame.player1Id) return 'w';
     if (user.uid === remoteGame.player2Id) return 'b';
     return null;
-  }, [remoteGame, user]);
+  }, [remoteGame, user, mode]);
 
   const isMyTurn = React.useMemo(() => {
-    if (!user) return false;
     if (mode !== 'pvp') return game.turn() === 'w';
     if (!remoteGame) return false;
-    return remoteGame.turn === (userColor || 'w');
+
+    // In PvP, we need to know who the user is to determine if it's their turn
+    if (!user) return false;
+    return remoteGame.turn === userColor;
   }, [mode, remoteGame, userColor, game, user]);
 
   const checkGameOverStatus = useCallback((currentGame: Chess) => {
@@ -127,6 +135,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     }
   }, [gameRef, checkGameOverStatus]);
 
+  // Request Notification Permissions
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
   // Handle Focus Re-Sync (Crucial for long matches)
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -139,25 +156,54 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     return () => window.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [gameId, forceResync]);
 
-  // Resilient Sync: Detect changes from Firestore
   useEffect(() => {
     if (remoteGame?.fen && remoteGame.fen !== game.fen()) {
-      setIsSyncing(true);
       try {
         const newGame = new Chess(remoteGame.fen);
+        const newTurn = newGame.turn();
+
+        // Detect the last move from history to sync highlighting
+        const remoteMoves = remoteGame.moves || [];
+        if (remoteMoves.length > 0) {
+          try {
+            const tempGame = new Chess();
+            // Replay till the move before last
+            for (let i = 0; i < remoteMoves.length - 1; i++) {
+              tempGame.move(remoteMoves[i]);
+            }
+            // The last move will give us the 'from' and 'to'
+            const m = tempGame.move(remoteMoves[remoteMoves.length - 1]);
+            if (m) {
+              setLastMove({ from: m.from, to: m.to });
+            }
+          } catch (e) {
+            console.warn("Could not parse last move for highlighting", e);
+          }
+        }
+
+        // Trigger notification if it's now our turn in PvP and tab is backgrounded
+        if (mode === 'pvp' && userColor === newTurn && lastTurnRef.current !== newTurn && document.visibilityState !== 'visible') {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            console.log("Triggering turn notification...");
+            new Notification('2Sides Chess', {
+              body: "It's your turn! Your opponent has made a move.",
+              icon: '/icon-192.png'
+            });
+          }
+        }
+        lastTurnRef.current = newTurn;
+
         setGame(newGame);
-        setTurn(newGame.turn());
+        setTurn(newTurn);
         setIsInCheck(newGame.inCheck());
         setHistory(remoteGame.moves || []);
         checkGameOverStatus(newGame);
         setIsThinking(false);
       } catch (e) {
         console.error("Critical Sync Error:", e);
-      } finally {
-        setTimeout(() => setIsSyncing(false), 300);
       }
     }
-  }, [remoteGame, checkGameOverStatus, game]);
+  }, [remoteGame, checkGameOverStatus, game, mode, userColor]);
 
   useEffect(() => {
     if (isGameOver) return;
@@ -302,6 +348,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
       if (move) {
         setSelected(null);
         setPossibleMoves([]);
+        setLastMove({ from, to });
         updateGameState(nextGame, move.san);
       } else {
         toast({ title: "Invalid Move", description: "That move violates chess rules.", variant: "destructive" });
@@ -316,7 +363,11 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
     const squareName = getSquareName(r, f);
     const piece = game.get(squareName);
 
-    if (piece && piece.color === game.turn() && (mode !== 'pvp' || piece.color === userColor)) {
+    // Basic turn check: must be the piece's turn, and if in PvP, must be the user's color
+    const isCorrectTurn = piece && piece.color === game.turn();
+    const isCorrectPlayer = mode !== 'pvp' || piece?.color === userColor;
+
+    if (isCorrectTurn && isCorrectPlayer) {
       setSelected(squareName);
       const moves = game.moves({ square: squareName, verbose: true })
         .filter(m => game.get(m.to as ChessSquare)?.type !== 'k')
@@ -449,9 +500,67 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           </div>
         </div>
 
+        {isFocusMode && (
+          <div className="fixed inset-0 z-[100] bg-slate-950/98 backdrop-blur-2xl animate-in fade-in duration-500" />
+        )}
+
+        {isFocusMode && (
+          <div className="fixed inset-0 z-[120] pointer-events-none flex flex-col items-center justify-between pt-20 pb-12 px-6">
+            <div className="w-full flex justify-end items-center px-4 pointer-events-auto">
+              <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+                <Timer className="w-4 h-4 text-white/50" />
+                <span className="font-mono font-black text-white">{formatTotalTime(elapsedSeconds)}</span>
+              </div>
+            </div>
+
+            <div className="w-full max-w-[440px] flex flex-row gap-3 pointer-events-auto items-center">
+              <div className={cn(
+                "flex-1 py-3 rounded-2xl text-xs font-black transition-all duration-300 border-2 flex items-center justify-center gap-2",
+                turn === 'w' ? "bg-white text-slate-900 border-primary shadow-[0_0_20px_rgba(255,255,255,0.2)] scale-[1.03]" : "bg-white/5 text-slate-500 border-white/5"
+              )}>
+                <div className="w-2.5 h-2.5 rounded-full bg-white border border-slate-300 shrink-0" />
+                WHITE
+                {userColor === 'w' && <span className="text-[9px] opacity-70">(YOU)</span>}
+                {turn === 'w' && <Activity className="w-3.5 h-3.5 animate-pulse shrink-0" />}
+              </div>
+
+              <div className={cn(
+                "flex-1 py-3 rounded-2xl text-xs font-black transition-all duration-300 border-2 flex items-center justify-center gap-2",
+                turn === 'b' ? "bg-slate-900 text-white border-primary shadow-[0_0_20px_rgba(0,0,0,0.5)] scale-[1.03]" : "bg-white/5 text-slate-500 border-white/5"
+              )}>
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-950 border border-white/30 shrink-0" />
+                BLACK
+                {userColor === 'b' && <span className="text-[9px] opacity-70">(YOU)</span>}
+                {turn === 'b' && <Activity className="w-3.5 h-3.5 animate-pulse text-primary shrink-0" />}
+              </div>
+
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setIsFocusMode(false)}
+                className="w-12 h-12 rounded-2xl bg-primary/10 border-primary/20 hover:bg-primary/20 transition-all shadow-lg group shrink-0"
+              >
+                <Minimize2 className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div
           ref={boardRef}
-          className="chess-board relative shadow-[0_35px_60px_-15px_rgba(0,0,0,0.5)] rounded-[2.5rem] overflow-hidden border-[12px] border-slate-950 bg-slate-900 touch-none select-none w-full aspect-square"
+          style={isFocusMode && focusBoardSize > 0 ? {
+            position: 'fixed',
+            width: focusBoardSize,
+            height: focusBoardSize,
+            left: 16,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 110,
+          } : undefined}
+          className={cn(
+            "chess-board relative shadow-[0_35px_60px_-15px_rgba(0,0,0,0.5)] rounded-[2.5rem] overflow-hidden border-[12px] border-slate-950 bg-slate-900 touch-none select-none w-full aspect-square",
+            isFocusMode && "border-4 sm:border-8"
+          )}
         >
           {(isThinking || isSyncing || isGameOver || (mode === 'pvp' && remoteGame && !remoteGame.player2Id)) && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[3px] animate-in fade-in">
@@ -498,6 +607,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               const isKingInCheck = isInCheck && piece && piece.toLowerCase() === 'k' &&
                 ((piece === 'K' && turn === 'w') || (piece === 'k' && turn === 'b'));
               const isDraggingThis = dragState?.square === squareName;
+              const isLastMoveSquare = lastMove && (lastMove.from === squareName || lastMove.to === squareName);
 
               return (
                 <div
@@ -509,6 +619,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                     "chess-square h-full w-full select-none touch-none cursor-grab active:cursor-grabbing relative flex items-center justify-center transition-colors duration-200",
                     isLight ? "bg-[#f0d9b5]" : "bg-[#b58863]",
                     isSelected && !isDraggingThis && "bg-[#fafa7d] ring-4 ring-inset ring-white/30",
+                    isLastMoveSquare && !isSelected && "bg-yellow-200/50",
                     isKingInCheck && "bg-rose-500/80 animate-pulse shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]"
                   )}
                 >
@@ -518,27 +629,45 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
                       piece ? "inset-2 border-[6px] border-black/15" : "w-5 h-5 bg-black/15 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
                     )} />
                   )}
-                  {piece && (
-                    <div
-                      style={isDraggingThis ? {
-                        position: 'fixed',
-                        left: dragState.currentX,
-                        top: dragState.currentY,
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 100,
-                        pointerEvents: 'none',
-                        width: '90px',
-                        height: '90px',
-                      } : {}}
-                      className={cn(
-                        "chess-piece text-5xl sm:text-7xl flex items-center justify-center transition-all select-none pointer-events-none w-full h-full",
-                        piece === piece.toUpperCase() ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" : "text-slate-950 drop-shadow-[0_2px_1px_rgba(255,255,255,0.2)]",
-                        isDraggingThis && "opacity-80 scale-125 rotate-3 z-[100]"
-                      )}
-                    >
-                      {PIECE_ICONS[piece]}
-                    </div>
-                  )}
+
+                  <AnimatePresence mode="popLayout">
+                    {piece && (
+                      <motion.div
+                        key={`${piece}-${r}-${f}`}
+                        layout
+                        initial={{ opacity: 0, scale: 0.8, y: -10 }}
+                        animate={{
+                          opacity: 1,
+                          scale: 1,
+                          y: 0,
+                          filter: isLastMoveSquare ? "drop-shadow(0 0 8px rgba(255,165,0,0.4))" : "none"
+                        }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30
+                        }}
+                        style={isDraggingThis ? {
+                          position: 'fixed',
+                          left: dragState.currentX,
+                          top: dragState.currentY,
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 100,
+                          pointerEvents: 'none',
+                          width: '90px',
+                          height: '90px',
+                        } : {}}
+                        className={cn(
+                          "chess-piece text-5xl sm:text-7xl flex items-center justify-center select-none pointer-events-none w-full h-full",
+                          piece === piece.toUpperCase() ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" : "text-slate-950 drop-shadow-[0_2px_1px_rgba(255,255,255,0.2)]",
+                          isDraggingThis && "opacity-80 scale-125 rotate-3 z-[100]"
+                        )}
+                      >
+                        {PIECE_ICONS[piece]}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               );
             })
@@ -582,6 +711,15 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
               </div>
             </SheetContent>
           </Sheet>
+
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => { setFocusBoardSize(window.innerWidth - 32); setIsFocusMode(true); }}
+            className="w-12 h-12 rounded-2xl bg-primary/10 border-primary/20 hover:bg-primary/20 transition-all shadow-lg group sm:hidden"
+          >
+            <Maximize2 className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+          </Button>
         </div>
       </div>
 
@@ -609,6 +747,7 @@ export function ChessBoard({ difficulty = 'medium', mode, gameId }: ChessBoardPr
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
