@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tail:*)",
+      "Bash(cd /c/source/2SidesChessDuet && firebase deploy --only hosting 2>&1)",
+      "Bash(ipconfig:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}
